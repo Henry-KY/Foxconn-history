@@ -1,0 +1,2386 @@
+<link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap/dist/css/bootstrap.min.css"/>
+<link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.css"/>
+<script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+<script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/keycloak-js@22.0.3/dist/keycloak.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.bare.js" ></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-polyfill/6.26.0/polyfill.js"></script>
+
+<head>
+	<link rel="icon" href="http://10.196.7.108:8060/F.ico">
+    <title>點檢總攬</title>
+</head>
+<body>
+    <div id="QualitySummary">
+        <!--http://10.35.22.72:88/static/images/logo.png-->
+        <!--/static/images/logo.png-->
+        <img v-if="!tokenIsFromUrl" class="header-logo" src="http://10.35.22.72:88/static/images/logo.png">
+
+        <p class="page-title">&emsp;點檢總覽</p>
+        
+        <!--登入按鈕-->
+        <div v-if="!tokenIsFromUrl" class="right-top-zone">
+            <div style="display:contents;">
+                <button v-if="!keycloakAuthed" class="login-button" @click="loginProcess">登入</button>
+                <button v-else class="login-button" @click="logoutProcess">
+                    <template v-if="userInfo.preferred_username !== undefined">
+                        {{userInfo.preferred_username.toUpperCase()}}
+                    </template>
+                    (登出)
+                </button>
+                
+                <component :is="'style'">
+                    .login-button{
+                        border-width: 0px;
+                        font-size: 1.6vmin;
+                        color: white;
+                        background-color: transparent;
+                        text-decoration: underline;
+                        text-underline-offset: 5px;
+                        cursor: pointer;
+                    }
+                    .loginDialog {
+                        border: none;
+                        box-shadow: 0px 0px 2px 2px #ccc;
+                        border-radius: 10px;
+                        background-color: #1a62ae;
+                        color: white;
+                    }
+                    .loginDialog::backdrop {
+                        background-color: rgba(0, 0, 0, 0.5);
+                    }
+                    .loginDialog input{
+                        font-size: 2vmin;
+                    }
+                    .loginDialog button{
+                        font-size: 2vmin;
+                    }
+                </component>
+            </div>
+        </div>
+
+        <div class="header"></div>
+        
+        <!--上列選單-->
+        <div class="custom-bar d-flex">
+            <b-col class="d-flex justify-content-md-center">
+                <!--廠區：
+                <b-dropdown :text="selectedFactory" variant="primary me-5">
+                    <b-dropdown-item>虎躍廠</b-dropdown-item>
+                </b-dropdown>
+            
+                
+            
+                工站：
+                <b-dropdown :text="selectedProduct" variant="primary me-5">
+                    <b-dropdown-item v-for="(item) in productList" :key="item" @click="selectedProduct=item">{{item}}</b-dropdown-item>
+                </b-dropdown>
+
+                機台：
+                <b-dropdown :text="selectedEquipment" variant="primary me-5">
+                    <b-dropdown-item v-for="(item) in equipmentList" :key="item" @click="selectedEquipment=item">{{item}}</b-dropdown-item>
+                </b-dropdown>-->
+
+
+                單位：
+                <b-dropdown :text="selectedFunction" variant="primary me-5">
+                    <b-dropdown-item v-for="(item) in functionList" :key="item" @click="selectedFunction=item">{{item}}</b-dropdown-item>
+                </b-dropdown>
+
+                關鍵字：
+                    <b-col class="col-2 me-3">
+                        <b-form-input
+                            placeholder="輸入關鍵字搜尋"
+                            v-model="selectName"
+                            class="mb-sm-0">
+                        </b-form-input>
+                    </b-col>
+                
+
+                <b-button variant="primary" @click="searchProcess()">搜尋</b-button>
+                <p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>
+                <b-button @click="exportFile">匯出Excel</b-button>
+                
+            </b-col>
+        </div>
+
+        <hr>
+        <!--toast-->
+        <template>
+            <div>
+              <b-toast
+                id="my-toast"
+                title="檔案匯入完成"
+                :visible="toastVisible"
+                @hidden="toastVisible = false"
+                solid
+                no-auto-hide
+              >
+                {{ exportMessage }}
+                <div class="d-flex justify-content-end mt-2">
+                  <b-button size="sm" variant="primary" @click="hideToast">確定</b-button>
+                </div>
+              </b-toast>
+            </div>
+        </template>
+        <!--表單內容-->
+        <b-container class="custom-container">
+            <b-row  class="d-flex justify-content-md-center">
+                <div class="button-container">
+                <b-col cols="2" class="d-flex justify-content-start align-items-center">
+                    <b-button v-if="isEditAuthed" variant="success" @click="itemInsert(null)" style="white-space: nowrap;">新增點檢項</b-button>
+                    <p style="margin-right: 15px;"></p>
+                    <!--檔案匯入-->
+                    <template>
+                        
+                        <div class="d-flex align-items-center">
+                            <b-button variant="primary" @click="showModalXl" style="white-space: nowrap;">檔案匯入</b-button>
+                            <p style="margin-right: 15px;"></p>
+                            <div class="rule ml-5" style="white-space: nowrap;">
+                                <span style="cursor: pointer;" @click="showdetal">上傳規則</span>
+                            </div>
+                        </div>
+                            <b-modal 
+                                hide-footer
+                                header-bg-variant="costom-modal"
+                                body-bg-variant="costom-modal"
+                                size="xl" 
+                                id="modal-xl" 
+                                title="選擇檔案"
+                                @shown="chooseFile">
+                                <b-button @click="chooseFile" variant="primary">選擇檔案</b-button>
+                                
+                                <b-button v-if="processDone === true" variant="primary" @click="startApiProcess">上傳</b-button>
+                                <b-button v-else disabled>上傳</b-button>
+                                <input ref="fileInput" type="file" id="excelFile" accept=".xls, .xlsx" style="display: none" @change="handleFileChange">
+                                
+                                <b-row class="d-flex justify-content-center align-items-center mt-3">
+                                    <b-col class="d-flex justify-content-end align-items-center">
+                                        進度：
+                                    </b-col>
+                                    <b-col>
+                                        <b-progress :value="exportProgress" :max="exportProgressMax" height="1.5rem" animated></b-progress>
+                                    </b-col>
+                                    <b-col></b-col>
+                                </b-row>
+                                
+                                
+                                
+
+                                <b-table
+                                    ref="tableImport"
+                                    class="custom-table-import"
+                                    sticky-header="60vh"
+                                    show-empty
+                                    Bordered  
+                                    :busy.sync="showOverlay"  
+                                    :items="itemsImport"
+                                    no-provider-filtering
+                                    :fields="importfields"
+                                    empty-text="無內容"
+                                    :filter="filter"
+                                    :filter-included-fields="filterOn"
+                                    @filtered="onFiltered"
+                                    :tbody-tr-class="rowClass"
+                                >
+                                    <!--序號-->
+                                    <template #cell(index)="{ item, index}">
+                                        {{(perPage!=='All'?(currentPage-1)*perPage:0) + index +1}}
+                                    <!--    <div v-if="Object.values(item).findIndex(x=>x===undefined)!==-1">
+                                            有空值!
+                                        </div>-->
+                                    </template>
+
+                                    <!--上傳狀態-->
+                                    <template #cell(uploadstatus)="{ item, index}">
+                                        <p v-html="statusUpload[index]"></p>
+                                    </template>
+                                    <p style="margin-right: 20px;"></p>
+                            
+                                </b-table>
+                            </b-modal>
+                        </div>
+                    </template>
+                </b-col>
+                </div>
+                <b-col cols="8" class="d-flex justify-content-md-center align-items-center"> 
+                    {{countStr}}
+                </b-col>
+            </b-row>
+            <!-- 表格元件 & Pagination -->
+            <b-overlay 
+                variant="dark"
+                :show="showOverlay" 
+                rounded="sm">
+                <!--編輯框&大表格元件 -->
+                <b-row class="mt-3 justify-content-center">
+                    
+                    <!--大表格元件 -->
+                    <b-table
+                        ref="table"
+                        class="custom-table"
+                        sticky-header="60vh"
+                        show-empty
+                        Bordered  
+                        :busy.sync="showOverlay"  
+                        :items="items"
+                        no-provider-filtering
+                        :fields="fields"
+                        :current-page="currentPage"
+                        :per-page="perPage==='All'?Number.MAX_SAFE_INTEGER:perPage"
+                        empty-text="無內容"
+                        :filter="filter"
+                        :filter-included-fields="filterOn"
+                        @filtered="onFiltered"
+                        :tbody-tr-class="validClass"
+
+                        dark
+                        label-sort-asc=""
+                        label-sort-desc=""
+                        label-sort-clear=""
+
+                    >
+                        <!--序號-->
+                        <template #cell(index)="{ item, index}">
+                            <div v-if="isEditAuthed" class="mytooltip pointer">
+                                <b-button v-if="isEditAuthed" v-b-tooltip.hover variant="link":title="isEditAuthed ? '編輯此項目' : ''" @click="itemEdit(item)">
+                                    {{(perPage!=='All'?(currentPage-1)*perPage:0) + index +1}}
+                                </b-button>
+                                
+                            </div>
+                            <template v-else>
+                                {{(perPage!=='All'?(currentPage-1)*perPage:0) + index +1}}
+                            </template>
+                        </template>
+
+                        <!--狀態按鈕-->
+                        <template #cell(enable)="{ item, index}">
+                            <div  class="form-check form-switch d-flex justify-content-center">
+                                <input class="form-check-input" type="checkbox" size="Small" role="switch" v-model="item.enable" @change="handleSwitchChange(item)" :disabled="disSwitchChange(item)" >
+                            </div>
+                        </template>
+                    </b-table>
+                </b-row>
+                <!-- Pagination -->
+                <b-row class="col-12 align-items-center">
+                    <b-col md="6" class="my-1 d-flex justify-content-end">
+                        每頁筆數：<b-form-select :options="pageOptions" v-model="perPage" />
+                    </b-col>
+                    <b-col md="6" class="my-1 d-flex justify-content-start">
+                        <b-pagination 
+                            first-number
+                            last-number
+                            :total-rows="items.length" 
+                            :per-page="perPage==='All'?Number.MAX_SAFE_INTEGER:perPage" 
+                            v-model="currentPage" 
+                            class="my-0" />
+                    </b-col>
+                </b-row>
+            </b-overlay>
+        </b-container>
+        <!--對話框(修改項目)-->
+        <b-modal id="modal-item-edit"
+            scrollable
+            @shown="editModalShown(true)"
+            @hidden="editModalShown(true)"
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+            @ok="updatecheckSummary()"
+        >
+            <template #modal-title class="text-center">
+                點檢 - 
+                <template v-if="selectedEditItem.new">
+                    新增項目
+                </template>
+                <template v-else>
+                    修改項目
+                </template>
+            </template>
+
+            <template #modal-footer="{ cancel, ok}">
+                <b-row v-if="!selectedEditItem.new">
+                    <b-col class="d-flex justify-content-end">
+                        <b-button variant="primary" @click="itemInsert(selectedEditItem)">複製以下內容來新增</b-button>
+                    </b-col>
+                </b-row>
+                <b-button v-if="!selectedEditItem.new && isDeleteAuthed" variant="danger"  @click="identifierDelete()" v-b-modal.modal-identifier-delete-confirm>
+                    刪除機台
+                </b-button>
+                <b-button v-if="!selectedEditItem.new && isDeleteAuthed" variant="danger"  @click="itemDelete()" v-b-modal.modal-item-delete-confirm>
+                    刪除
+                </b-button> 
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button v-if="checkSelectedEditItemIsValid()===true" variant="primary" @click="ok()">
+                    {{selectedEditItem.new?"新增":"修改"}}
+                </b-button>
+                <b-button v-else disabled>
+                    {{selectedEditItem.new?"新增":"修改"}}
+                </b-button>
+                
+            </template>
+
+            <template v-for="item in fields">
+                <template v-if="item.key !== 'index'">
+                    <b>{{item.label}}：</b>
+                    
+                    <!--
+                    <b-form-textarea
+                        v-if="item.key==='checkMethod' ||
+                                item.key==='value' ||
+                                item.key==='positive_error' ||
+                                item.key==='negative_error'"
+                        v-model="selectedEditItem[item.key]" 
+                        :placeholder="'輸入'+item.label"
+                        rows="2"
+                        max-rows="10"
+                    ></b-form-textarea>
+                    -->
+
+                    <!--下拉選單綁訂填寫項目-->
+                    
+                    <template v-if="item.key==='enable'">
+                        <div>
+                            <b-form-select
+                                class="w-100"
+                                class="my-custom-select"
+                                v-model="selectedEditItem.enable"
+                                :options="enableOptions"
+                            ></b-form-select>
+                        </div>
+                    </template>
+
+                    <template v-else-if="item.key==='stage' ">
+                        <div>
+                            <b-form-select
+                                class="w-100"
+                                class="my-custom-select"
+                                v-model="selectedEditItem.stage"
+                                :options="stageOptions"
+                            ></b-form-select>
+                        </div>
+                    </template>
+                    
+                    <template v-else-if="item.key==='frequency' ">
+                        <div>
+                            <b-form-select
+                                class="w-100"
+                                class="my-custom-select"
+                                v-model="selectedEditItem.frequency"
+                                :options="frequencyOptions"
+                            ></b-form-select>
+                        </div>
+                    </template>
+                    <b-form-input 
+                        v-else-if="item.key==='time'" 
+                        v-model="selectedEditItem[item.key]"
+                        type="date"
+                        class="mb-2 mr-sm-2 mb-sm-0"></b-form-input>
+                    <span v-else-if="item.key==='identifier' && !selectedEditItem.new" >
+                        {{selectedEditItem[item.key]}}
+                    </span> 
+                    <span v-else-if="item.key==='name' && !selectedEditItem.new" >
+                        {{selectedEditItem[item.key]}}
+                    </span>
+                    <span v-else-if="item.key==='check_name' && !selectedEditItem.new" >
+                            {{selectedEditItem[item.key]}}
+                    </span>
+
+                    <b-form-input 
+                        v-else-if="item.key === 'value'"
+                        v-model="selectedEditItem[item.key]"
+                        type="text"
+                        class="mb-2 mr-sm-2 mb-sm-0">
+                    </b-form-input>
+                    <b-form-input 
+                        v-else-if="item.key === 'positive_error' || item.key === 'negative_error'"
+                        v-model="selectedEditItem[item.key]"
+                        type="number"
+                        :disabled="isChinese"
+                        class="mb-2 mr-sm-2 mb-sm-0">
+                    </b-form-input>
+                    <b-form-input 
+                        v-else
+                        v-model="selectedEditItem[item.key]"
+                        :list="'my-list-' + item.key"
+                        :placeholder="'輸入' + item.label"
+                        :state="selectedEditItem[item.key] !== ''"
+                        class="mb-2 mr-sm-2 mb-sm-0">
+                    </b-form-input>
+                    
+                    <!--
+                    <span v-else>
+                        {{selectedEditItem[item.key]}}
+                    </span>
+                    -->
+                    <br>
+                </template>
+            </template>
+            
+            
+            <!--下面是輸入欄位的預設選項-->
+            <datalist id="my-list-product">
+                <option v-for="item in selectedItemProductList">{{item}}</option>
+            </datalist>
+
+            <datalist id="my-list-equipment">
+                <option v-for="item in selectedItemEquipmentList">{{item}}</option>
+            </datalist>
+
+            <datalist id="my-list-unit">
+                <option>N/A</option>
+                <option>rpm</option>
+                <option>sec</option>
+                <option>次</option>
+                <option>mm</option>
+                <option>MPa</option>
+            </datalist>
+
+            <datalist id="my-list-frequency">
+                <option>日</option>
+                <option>月</option>
+                <option>週</option>
+            </datalist>
+            
+            
+            <datalist id="my-list-process_result">
+                <option>已結案</option>
+                <option>追蹤中</option>
+            </datalist>
+            
+            
+        </b-modal>
+        <!--對話框(確認刪除項目)-->
+        <b-modal id="modal-item-delete-confirm" 
+            scrollable
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+            @ok="deleteQulitySummary()"
+        >
+            <template #modal-title class="text-center">
+                點檢 - 刪除項目確認
+            </template>
+            <template #modal-footer="{ cancel, ok}">
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button variant="primary" @click="ok()">
+                    確定
+                </b-button>
+            </template>
+
+            確定刪除此項目？
+            
+        </b-modal>
+        <!--刪除機台/所有點檢項目-->
+        <b-modal id="modal-identifier-delete-confirm" 
+            scrollable
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+            @ok="deleteidentifier()"
+        >
+            <template #modal-title class="text-center">
+                點檢 - 刪除項目確認
+            </template>
+            <template #modal-footer="{ cancel, ok}">
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button variant="primary" @click="ok()">
+                    確定
+                </b-button>
+            </template>
+
+            確定刪除此項目？
+            
+        </b-modal>
+        
+        <div class="footer">
+            <span style="cursor: pointer;" @click="showVersion">version: {{version}}</span>
+        </div>
+       
+    </div>
+</body>
+
+<script>
+
+    var app = new Vue({
+        el: '#QualitySummary',
+        data(){
+            return {
+                map: [],
+                selectedFactory: "虎躍廠",
+                functionListOrigin: ["沖壓","成型","電鍍","裝配"],
+                selectedFunction: "All",
+                selectedProduct: "All",
+                selectedEquipment: "All",
+                startDate: "",
+                endDate: "",
+                selectedStatus: "",
+                stageOptions: ['沖壓', '成型', '電鍍', '裝配'],
+                selectedfrequency: "",
+                frequencyOptions: ['日','月','週',],
+                enableOptions:['啟用','停用'],
+                countStr: "",
+                isChinese:[],
+                exportMessage: '',
+                toastVisible: false,
+                uploadIdx: 0,
+                itemsImport: [],
+
+                stageMapping: {
+                    stamping: '沖壓',
+                    inject: '成型',
+                    plating: '電鍍',
+                    assembling: '裝配',},
+
+                frequencyMapping:{
+                    Day:'日',
+                    day:'日',
+                    month:'月',
+                    week:'週',
+                },
+                frequencyMapping2:{
+                    Day:'日',
+                    day:'日',
+                    month:'月',
+                    week:'週',
+                },
+
+                exportProgress: 0,
+                exportProgressMax: 0,
+
+                selectedItem:{},        //選取的item
+                selectedEditItem: {},   //選取後修改的item
+                rawItems: [],//關鍵字搜尋
+                selectName:"",
+                searchResult:[],
+                originalItems: [],
+                items: [],
+                itemsImport:[],
+                statusUpload:[],
+                uploadIdx: 0,
+                
+                importfields:[
+                            { key: "enable",        label: "啟用",      'class': 'text-center align-middle',},
+                            { key: "index",           label: "序號",      'class': 'text-center align-middle',},
+                            { key: "stage",          label: "機能單位",  'class': 'text-center align-middle',},
+                            { key: "workStation",     label: "工站",      'class': 'text-center align-middle',},
+                            { key: "name",            label: "機台名稱",  'class': 'text-center align-middle',},
+                            { key: "identifier",      label: "機台代碼",  'class': 'text-center align-middle',},
+                            { key: "check_name",      label: "點檢名稱",  'class': 'text-center align-middle',},
+                            { key: "value",           label: "設定值",    'class': 'text-center align-middle',},
+                            { key: "positive_error",  label: "正誤差",    'class': 'text-center align-middle',},
+                            { key: "negative_error",  label: "負誤差",    'class': 'text-center align-middle',},
+                            { key: "unit",            label: "單位",      'class': 'text-center align-middle',},
+                            { key: "checkMethod",     label: "點檢方法",  'class': 'text-center align-middle',}, 
+                            { key: "frequency",       label: "頻率",      'class': 'text-center align-middle',},
+                            { key: "editor",         label: "點檢人",    'class': 'text-center align-middle',},
+                            { key: "manager",         label: "審核人",    'class': 'text-center align-middle',},
+                            //{ key: "time",            label: "時間",      'class': 'text-center align-middle',},
+                            { key: "uploadstatus",    label: "上傳狀態",      'class': 'text-center align-middle',},
+                ],
+                fields: /*[
+                            { key: 'name', label: 'Person Full name',},
+                            { key: 'age', label: 'Person age', 'class': 'text-center', editable: true,},
+                            { key: 'isActive', label: 'is Active',},
+                            { key: 'actions', label: 'Actions','class': 'text-center' , thStyle: { width: "15%" },}
+                        ],*/
+                        [
+                            { key: "enable",          label: "啟用",     sortable: false, 'class': 'text-center align-middle',},
+                            { key: "index",           label: "序號",     sortable: false,  'class': 'text-center align-middle',},
+                            //{ key: "uploadstatus",    label: "上傳狀態", sortable: false,   'class': 'text-center align-middle',},
+                            { key: "stage",           label: "機能單位", sortable: true,  'class': 'text-center align-middle',},
+                            { key: "workStation",     label: "工站",     sortable: true,  'class': 'text-center align-middle',},
+                            { key: "name",            label: "機台名稱", sortable: true,  'class': 'text-center align-middle',},
+                            { key: "identifier",      label: "機台代碼", sortable: true,  'class': 'text-center align-middle',},
+                            { key: "check_name",      label: "點檢名稱", sortable: true,  'class': 'text-center align-middle',},
+                            { key: "value",           label: "設定值",   sortable: false,  'class': 'text-center align-middle',},
+                            { key: "positive_error",  label: "正誤差",   sortable: false,  'class': 'text-center align-middle',},
+                            { key: "negative_error",  label: "負誤差",   sortable: false,  'class': 'text-center align-middle',},
+                            { key: "unit",            label: "單位",     sortable: true,  'class': 'text-center align-middle',},
+                            { key: "checkMethod",     label: "點檢方法", sortable: true,  'class': 'text-center align-middle',}, 
+                            { key: "frequency",       label: "頻率",     sortable: true,  'class': 'text-center align-middle',},
+                            { key: "editor",          label: "點檢人",   sortable: true,  'class': 'text-center align-middle',},
+                            { key: "manager",         label: "審核人",   sortable: true,  'class': 'text-center align-middle',},
+                            //{ key: "time",            label: "時間",      'class': 'text-center align-middle',},
+                        ],
+                
+                modifiedExcelData: [],
+                excelData: [],
+                items: [], 
+                processDone: false,
+
+                editModalIsShown: false,
+
+
+                currentPage: 1,
+                perPage: 10,
+                totalRows: 0,
+                pageOptions: [ 5, 10, 20, 100],
+                sortBy: null,
+                sortDesc: false,
+                sortDirection: 'asc',
+                filter: null,
+                filterOn: ["userName", "firstName", "lastName", "email", "ldapInfo",],
+
+                showOverlay: false,
+                
+                devMode: false,
+
+                //版本相關變量
+                version: "V1.02",
+                //建議把versionHistory倒置。最新的寫在最上面
+                versionHistory: [
+                    "V1.02: [30/06/15]新增進度條，及檔案匯入結束後成功與失敗總結，及週點檢選項，文字型與數字型判斷。",
+                    "V1.01: [24/05/15]修正啟用鈕bug以及錯誤massage的錯誤判斷。",
+                    "V1.00: 初版",
+                ],
+               
+                versiondetal:[
+                    "1.機台代碼為唯一性，不可出現不同機台名稱卻對應同一個機台代碼。",
+                    "2.不同機能單位可以定義同樣的機台名稱，但不可同樣的機台代碼。",
+                    "3.當機台名稱、機台代碼、點檢名稱一樣的點檢項目才進行資料覆蓋，若有一個不同則為新增。",
+                ],
+                
+                //和token相關的項目(data) START
+                keycloak: null,
+                keycloakTimer: null,
+                keycloakAuthed: false,
+                tokenIsFromUrl: false,
+                loginFailMsg: "權限不足或登入失敗，請以admin或developer身份登入！",
+                access_token: "",
+                userInfo:{},
+                resourceDict:{},    //key: resource name; value: resource本體
+                fetchResourceIndex: 0,
+                tempResourceDict:{},//resourceDict的暫存版(為了讓resourceDict更新時直接影響computed變數)
+                //和token相關的項目(data) END
+            }
+        },
+        
+        created() {
+            this.readAndDisplayExcel();
+            this.itemsImport = [];
+            this.statusUpload = [];
+        },
+        created: function(){
+            //設定時間
+            let d = new Date();
+            this.endDate = d.toISOString().slice(0,10);
+            d.setMonth(d.getMonth()-1);
+            this.startDate = d.toISOString().slice(0,10);
+            //this.searchDate = new Date().toISOString().slice(0,10);
+            
+            //this.mappingProcess();
+        },
+        mounted: function(){
+            this.checkTokenProcess();
+        },
+        unmounted: function(){
+            this.keycloakDispose();
+
+        
+        },
+        watch:{
+            selectName: function(newValue){
+                this.filterProcess();
+            },
+            selectedFunction:function(newValue){
+                this.filterProcess();
+            },
+            'selectedEditItem.value'(newValue) {
+            this.isChinese = /[\u3400-\u9FBF]/.test(newValue);
+            }
+
+        },
+        computed: {
+            //搜尋清單
+            functionList:{
+                get(){
+                    let res = ["All"];
+
+                    res = res.concat(this.functionListOrigin);
+                    
+                    return res;
+                },
+            },
+            /*productList:{
+                get(){
+                    let res = ["All"];
+                    this.map.filter((item)=>{
+                        return (this.selectedFunction === "All" || this.selectedFunction === item.function);
+                    }).forEach(mapItem=>{
+                        if(res.indexOf(mapItem.description) === -1)
+                        {
+                            res.push(mapItem.description);
+                        }
+                    });
+
+                    this.selectedProduct = res[0];
+                    return res;
+                },
+            },*/
+            /*equipmentList:{
+                get(){
+                    
+                    let res = ["All"];
+
+                    this.map.filter((item)=>{
+                        return (this.selectedFunction === "All" || this.selectedFunction === item.function) &&
+                                (this.selectedProduct === "All" || this.selectedProduct === item.check_name);
+                    }).forEach(mapItem=>{
+                        if(res.indexOf(mapItem.equipment) === -1)
+                        {
+                            res.push(mapItem.equipment);
+                        }
+                    });
+
+                    this.selectedEquipment = res[0];
+                    
+                    return res;
+                },
+            },*/
+
+            selectedItemProductList:{
+                get(){
+                    let res = [];
+                    
+                    if(this.selectedEditItem !== undefined && this.selectedEditItem.function !== undefined)
+                    {
+                        this.map.filter((item)=>{
+                            return (this.selectedEditItem.function === item.function);
+                        }).forEach(mapItem=>{
+                            if(res.indexOf(mapItem.description) === -1)
+                        {
+                            res.push(mapItem.description);
+                        }
+                        });
+                    }
+                    
+                    return res;
+                },
+            },
+            selectedItemEquipmentList:{
+                get(){
+                    let res = [];
+                    if(this.selectedEditItem !== undefined && 
+                        this.selectedEditItem.function !== undefined && 
+                        this.selectedEditItem.product !== undefined)
+                    {
+                        this.map.filter((item)=>{
+                            return (this.selectedEditItem.function === item.function) &&
+                                    (this.selectedEditItem.product === item.description);
+                        }).forEach(mapItem=>{
+                            if(res.indexOf(mapItem.equipment) === -1)
+                            {
+                                res.push(mapItem.equipment);
+                            }
+                        });
+                    }
+                    
+                    return res;
+                },
+            },
+
+            
+            isEditAuthed:{
+                get(){
+                    let res = false;
+                    
+                    if(this.userInfo !== undefined && 
+                        this.userInfo.realm_access !== undefined &&
+                        this.userInfo.realm_access.roles !== undefined
+                    )
+                    {
+                        res = this.getAttributeFromResource("quality-summary", "新增修改權限");
+                        if(res === "true")
+                        {
+                            res = true;
+                        }
+                        else
+                        {
+                            res = false;
+                        }
+                    }
+                    //console.log("isEditAuthed: " + res);
+                    return true;dataProcess
+                }
+            },
+            isDeleteAuthed:{
+                get(){
+                    let res = false;
+                    
+                    if(this.userInfo !== undefined && 
+                        this.userInfo.realm_access !== undefined &&
+                        this.userInfo.realm_access.roles !== undefined
+                    )
+                    {
+                        res = this.getAttributeFromResource("quality-summary", "刪除權限");
+                        if(res === "true")
+                        {
+                            res = true;
+                        }
+                        else
+                        {
+                            res = false;
+                        }
+                    }
+                    //console.log("isEditAuthed: " + res);
+                    return true;
+                }
+            }
+        },
+        
+        methods:{
+            mappingProcess(){
+               /*
+                fetch(`http://10.57.20.154:8096/checklist-api/equipments/865-FA01-D956`)
+                .then((response) => {
+                    //console.log(response);
+                    if(response.stage !== 200)
+                    {
+                        this.toast('讀取總覽', `讀取失敗: ${response.stage}(${response.stageText})`);
+                        //return {success: false};
+                        return {"success":true,"msg":"success","data":[{"stage":"成型","identifier":"030-0026-1631","description":"(成)3.2Plug","name":"16"},{"stage":"成型","identifier":"030-0002-1410","description":"(成)RF020 shell","name":"19"},{"stage":"成型","identifier":"009-0026-6068","description":"(成)3.2Rec","name":"29"},{"stage":"成型","identifier":"030-0001-1409","description":"(成)RF020 fixed","name":"B10"},{"stage":"沖壓","identifier":"025-1009-4926","description":"(沖)3.2Rec 卡鎖","name":"B09"},{"stage":"沖壓","identifier":"052-0009-6490","description":"(沖)3.2Plug","name":"B09"},{"stage":"沖壓","identifier":"025-0009-5065","description":"(沖)RF020 shell","name":"H01"},{"stage":"沖壓","identifier":"052-0009-5953","description":"(沖)RF020 moving","name":"H01"},{"stage":"裝配","identifier":"QT4013Y-D0332-7H","description":"HD BTB 3.2(PLUG)","name":"3.2PLUG #1"},{"stage":"裝配","identifier":"QT4113Y-D0332-7H","description":"HD BTB 3.2(REC)","name":"3.2REC #1"},{"stage":"裝配","identifier":"KMC1001-F020-7H","description":"RF 020-12mm","name":"RF020#2"},{"stage":"裝配","identifier":"KMC1001-F020-7H","description":"RF 020-12mm","name":"RF020#3"},{"stage":"電鍍","identifier":"052-000Y-6490","description":"(電)3.2 PLUG","name":"睿品"}]};
+                    }
+                    else
+                    {
+                        return response.json();
+                    }
+                })
+                .then( (response) => {
+                    //console.log(response);
+                    if(response.success)
+                    {
+                        this.map = response.data;
+                    }
+                })
+                .catch((error) => {
+                    //console.log(`Error: ${error}`);
+                    this.toast('讀取產品列表', `讀取失敗: ${error}`);
+                    
+                });
+                */
+            },
+            searchProcess(){
+                
+                let productNumbers = this.map.filter((item)=>{
+                    return (this.selectedFunction === "All" || this.selectedFunction === item.function) &&
+                    (this.selectedProduct === "All" || this.selectedProduct === item.description);
+                }).map(item=>item.identifier).join(",");
+                
+
+                fetch(`http://10.57.20.154:8096/checklist-api/equipments`, {
+                    method: 'GET', // 或其他 HTTP 方法，視你的需求而定
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                        'Content-Type': 'application/json', // 請根據 API 的要求設置 Content-Type
+                    }
+                })
+                .then((response) => {
+                    //console.log(response);
+                    if(response.status !== 200)
+                    {
+                        this.toast('讀取總覽', `讀取失敗: ${response.stage}(${response.stageText})`);
+                        return {code: 400};                        
+                    }
+                    else
+                    {
+                        return response.json();
+                    }
+                })
+                
+                .then( (response) => {
+                    //console.log(response);
+                    if(response.code === 200)
+                    {
+                        //this.searchResult = response.data;
+                        //this.dataProcess();
+                        let items = [];
+                        let totalIndex = 0;
+                        response.data.forEach((aEq) => {
+                            aEq.checkItems.forEach((x, idx) => {
+                                totalIndex = totalIndex + 1;
+                                items.push({
+                                    index: totalIndex,
+                                    stage: this.stageMapping[aEq.stage] || aEq.stage,
+                                    workStation: aEq.workStation,
+                                    name: aEq.name,
+                                    identifier: aEq.identifier,
+                                    check_name: x.name,
+                                    value: x.value,
+                                    positive_error: x.positiveError,
+                                    negative_error: x.negativeError,
+                                    unit: x.unit,
+                                    checkMethod: x.checkMethod,
+                                    frequency: this.frequencyMapping[x.frequency] || x.frequency,
+                                    editor: x.editor,
+                                    manager: x.manager,
+                                    //time: x.time,
+                                    enable: x.enable && (x.editor !== null) && (x.manager !== null),
+                                })
+                            });
+                        });
+
+                        //filter1: function
+                        //items = items.filter(x=>this.selectedFunction==="All"||x.stage===this.selectedFunction);
+
+                        // 使用 Set 來保留不重複的 function 值
+                        const workStationSet = new Set(items.map(obj => obj.workStation));
+
+                        // 將 Set 轉換為陣列
+                        const workStationArray = [...workStationSet];
+                        //console.log(workStationArray)
+                        
+                        this.rawItems = items;
+                        this.filterProcess();
+                    }
+                    else
+                    {
+                        this.toast('讀取總覽', `讀取失敗(${response.code})`);
+                    }
+                })
+                .catch((error) => {
+                    //console.log(`ScadaViewData Error: ${error}`);
+                    this.toast('讀取總覽', `讀取失敗: ${error}`);
+                })
+
+                this.$refs.table.refresh();
+            },
+            /*dataProcess(){
+                let functionCounts = new Array(this.functionListOrigin.length).fill(0);
+
+				this.originalItems = [];
+				this.searchResult.forEach(item => {
+                    //過濾沒選到的機台
+                    if(this.selectedEquipment !== "All" && item.equipment !== this.selectedEquipment)
+                    {
+                        return;
+                    }
+                    
+
+					let newItem = this.clonedObject(item);
+
+                    newItem.class_date = newItem.class_date.slice(0,10).replace(/-/g, '/');
+                    //newItem.report_date = newItem.report_date.slice(0,10).replace(/-/g, '/');
+
+					//newItem.editing = false;
+					//newItem._cellVariants = {};
+
+                    let countIdx = this.functionListOrigin.indexOf(item.function);
+                    if(countIdx !== -1)
+                    {
+                        functionCounts[countIdx]++;
+                    }
+
+					this.originalItems.push(newItem);
+				});
+				this.items = this.clonedObject(this.originalItems);
+				this.totalRows = this.items.length;
+
+                
+                this.countStr = "";
+                functionCounts.forEach((count, j)=>{
+                    if(count !== 0)
+                    {
+                        this.countStr += this.functionListOrigin[j] + "：" + count + "筆，";
+                    }
+                });
+                this.countStr += "共" + this.totalRows + "筆";
+                //this.itemEdit(this.items[0]);
+			},*/
+
+
+            filterProcess(){
+                this.filterSelection();
+                this.filterKeyword();
+            },
+            filterSelection(){
+                this.items = this.rawItems.filter((x) => {
+                    let res = false;
+                    if(this.selectedFunction === "All" && x.stage === this.selectedFunction)
+                    {
+                        res = true;
+                    }
+                    else 
+                    {
+                        return res;
+                    }
+                    
+                });
+            },
+            filterKeyword(){
+                //console.log("filterKeyword: " + this.selectName);
+                const filterColumns = ["name","identifier","check_name","checkMethod","editor","manager","stage","workStation"];
+
+                this.items = this.rawItems.filter((x) => {
+                    let res = false;
+
+                    if(this.selectName === "")
+                    {
+                        res = true;
+                    }
+                    else
+                    {
+                        for(let i = 0; i < filterColumns.length; i++)
+                        {
+                            if(x[filterColumns[i]] !== undefined &&
+                                x[filterColumns[i]] !== null && 
+                                x[filterColumns[i]].toLowerCase().indexOf(this.selectName.toLowerCase()) !== -1)
+                            {
+                                res = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    
+
+                    return res;
+                });
+            },
+            
+
+            toHtml: function(str){
+                return str.replace(/\n/g, '<br>');
+            },
+
+
+            chooseFile() {
+                this.exportProgress = 0;
+                this.$refs.fileInput.value = null;
+                this.$refs.fileInput.click();
+            },
+
+            //啟用狀態
+            disSwitchChange(item) {
+                if (item.editor === null || item.manager === null) {
+                    return true; 
+                } else {
+                    return false;
+                }
+            },
+            handleSwitchChange(item) {
+                //console.log(item.enable);
+                const confirmed = window.confirm(`確定要${item.enable ? '啟用' : '停用'}狀態按鈕吗？`);
+                
+                
+                if (confirmed) {
+                    this.toast("狀態切換", `${item.identifier}${item.check_name}狀態按鈕已${item.enable ? '啟用' : '停用'}`);
+                }
+
+                item.frequency = this.frequencyMapping2[item.frequency] || item.frequency;  
+
+                if (confirmed) {
+                    // 更新後台
+                    const status = item.enable ? 'True' : 'false';
+                    const identifier = item.identifier;
+                    const resultType = isNaN(item.value) ? 'text' : 'numerical';
+
+                    fetch(`http://10.57.20.154:8096/checklist-api/equipments/${item.identifier}/check-items/${item.check_name}`,
+                        {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${this.access_token}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                "value": item.value,
+                                "positiveError": item.positive_error,
+                                "negativeError": item.negative_error,
+                                "unit": item.unit,
+                                "checkMethod": item.checkMethod,
+                                "frequency": "day",
+                                "enable": item.enable,
+                                "resultType": resultType,
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(json => {
+                            this.toast("狀態切換", `狀態按鈕已${item.enable ? '啟用' : '停用'}`);
+                            this.searchProcess();
+                        })
+                        .catch((error) => {
+                            this.toast('狀態切換', `狀態切換失敗：${error}`);
+                        });
+                        } else {
+                            // 狀態還原
+                            this.$nextTick(() => {
+                                item.enable = !item.enable;
+                            });
+                        }
+                    },
+            readAndDisplayExcel() {
+                this.processDone = false;
+                this.excelData = [];
+                this.itemsImport = [];
+                this.statusUpload = [];
+
+                var input = document.getElementById('excelFile');
+                var file = input.files[0];
+
+                if (file) {
+                    var reader = new FileReader();
+
+                    reader.onload = (e) => {
+                        var data = new Uint8Array(e.target.result);
+                        var workbook = XLSX.read(data, {
+                            type: 'array'
+                        });
+
+                        // Get data from the first sheet only
+                        var firstSheetName = workbook.SheetNames[0];
+                        var sheet = workbook.Sheets[firstSheetName];
+                        console.log (sheet)
+                        // Convert the first sheet to JSON
+                        var sheetData = XLSX.utils.sheet_to_json(sheet, {
+                            header: 1
+                        });
+
+                        if (sheetData.length > 0) {
+                            //delete row 1 (because it's title row)
+                            sheetData = sheetData.slice(1);
+                            sheetData = sheetData.filter((item) => item.length > 0);
+                            
+                            
+                            
+                            
+                            //process a row into a object
+                            this.excelData = this.modifySheetData(sheetData);
+
+                            //item.filter((x)=>(x===undefined)).length===0
+                            /*
+                            let emptyItemNumber = this.excelData.filter((item) => Object.values(item).findIndex((x)=>(x===undefined)) !== -1).length;
+                            if(emptyItemNumber > 0)
+                            {
+                                alert("警告!有" + emptyItemNumber + "項帶有空值的項目!");
+                            }*/
+                            
+
+                            this.itemsImport = this.excelData;
+                            this.statusUpload = Array(this.itemsImport.length).fill("未上傳");
+                            //console.log(this.itemsImport);
+                            //console.log(this.statusUpload);
+
+                            // Update the processDone flag
+                            this.processDone = true;
+                            /*
+                            if(emptyItemNumber === 0) {
+                                //this.processDone = true;
+                            }*/
+                        } 
+                        
+                    };
+
+                    reader.readAsArrayBuffer(file);
+                }
+            },
+            handleFileChange() {
+                this.readAndDisplayExcel();
+            },
+            
+            //匯出excel檔案(套裝可以挪用改KEY)
+            exportFile(){
+
+                let filename = `點檢總表_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`;
+                const workbook = new ExcelJS.Workbook();
+                const worksheet = workbook.addWorksheet(filename, {views:[{state: 'frozen', xSplit: 5, ySplit:1}]});
+
+                // 添加標題行
+                let outputFields = this.fields.filter(x=>x.label!=="序號"); //去掉序號
+                const headerRow = worksheet.addRow(outputFields.map(field => field.label));   
+                headerRow.font = { bold: true };
+
+                // 添加數據行
+                this.items.forEach(item => {
+                    console.log(item.enable);
+                    const dataRow = worksheet.addRow(outputFields.map(field => {
+                        if (field.key === 'enable') 
+                        {
+                            return item.enable ? '啟用' : '停用';
+                        }
+                        else
+                        {
+                            return item[field.key];
+                        }
+                    }));   //去掉序號
+                    // 你可以在這裡添加更多的格式設置，例如文本格式、日期格式等
+                   
+                });
+
+                //const allBordersStyle = { style: 'thick' };
+                //worksheet.getCell('A1').border = { ...allBordersStyle, bottom: { style: 'thin' } };
+                //worksheet.getCell(`A${worksheet.rowCount}`).border = { ...allBordersStyle, top: { style: 'thin' } };
+                let widthArray = [6,10.29,13.29,10,25,10.29,25.43,30.29,25,12.86,10.29,20,20,25.43,40,10.29,40,25.43,10.29,40,25.43,40,40,40,40];
+                for(let x = 1; x <= worksheet.columns.length; x++)
+                {
+                    //指定寬度
+                    worksheet.getColumn(x).width = widthArray[x-1];
+                    for(let y = 1; y <= worksheet.rowCount; y++)
+                    {
+                        let aBorder = {
+                            top: {style: 'thin'},
+                            left: {style: 'thin'},
+                            bottom: {style: 'thin'},
+                            right: {style: 'thin'},
+                        };
+
+                        if(x === 1)
+                        {
+                            aBorder.left.style = 'thick';
+                        }
+                        else if(x === worksheet.columns.length)
+                        {
+                            aBorder.right.style = 'thick';
+                        }
+                        if(y === 1)
+                        {
+                            aBorder.top.style = 'thick';
+                            aBorder.bottom.style = 'thick';
+                        }
+                        else if(y === worksheet.rowCount)
+                        {
+                            aBorder.bottom.style = 'thick';
+                        }
+
+                        worksheet.getRow(y).getCell(x).border = aBorder;
+                    }
+                }
+
+
+                // 將工作簿保存為 Excel 文件
+                workbook.xlsx.writeBuffer().then(buffer => {
+                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `${filename}.xlsx`;
+                    link.click();
+                });
+            },
+            formatDate(numb, format = '-') {
+                if (isNaN(numb)) {
+                    let dateParts = numb.split('/');
+                    if (dateParts.length === 3) {
+                        let y = dateParts[0];
+                        if (!isNaN(y) && parseInt(y) > 100 && parseInt(y) < 2000) {
+                            return (parseInt(y) + 1911) + "-" + dateParts[1] + "-" + dateParts[2];
+                        } else {
+                            return dateParts[0] + "-" + dateParts[1] + "-" + dateParts[2];
+                        }
+                    } else if (dateParts.length === 2) {
+                        let yyyy = this.excelData[0][0].class_date.slice(0, 4);
+                        return yyyy + "-" + dateParts[0] + "-" + dateParts[1];
+                    }
+                    else
+                    {
+                        return undefined;
+                    }
+                } else {
+                    const time = new Date((numb - 25567) * 24 * 3600000 - 5 * 60 * 1000 - 43 * 1000 - 24 * 3600000 - 8 * 3600000)
+
+                    time.setYear(time.getFullYear())
+                    const year = time.getFullYear() + ''
+                    const month = time.getMonth() + 1 + ''
+                    const date = time.getDate() + ''
+                    if (format && format.length === 1) {
+                        return year + format + (month < 10 ? '0' + month : month) + format + (date < 10 ? '0' + date : date)
+                    } else {
+                        return year + (month < 10 ? '0' + month : month) + (date < 10 ? '0' + date : date);
+                    }
+                }
+
+            },
+            modifySheetData(sheetData) {
+                console.log(sheetData)
+                return sheetData.map((row) => {
+                    
+                    return {
+                        enable:row[0],//啟用
+                        stage: row[1], // 機能單位
+                        workStation: row[2], // 工站
+                        name: row[3], // 機台名稱
+                        identifier: row[4], // 機台代碼ㄒ
+                        check_name: row[5], // 點檢名稱
+                        value: row[6], // 設定值
+                        positive_error: row[7], // 正誤差
+                        negative_error: row[8], // 負誤差
+                        unit: row[9], //  // 單位
+                        checkMethod: row[10], // 點檢方法
+                        frequency: row[11], // 頻率
+                        editor: row[12], // 點檢人
+                        manager: row[13], // 審核人
+                        //time: row[14], // 時間
+                    };
+                });
+            },
+            getTableFields(tabIndex) {
+                // 返回 b-table 的 fields 屬性，這裡使用 index + 1 作為標題
+                if (this.excelData.length > 0 && this.excelData[tabIndex].length > 0) 
+                {
+                    // return this.title;
+                    if (tabIndex === 0) //品質戰報(標頭)
+                    {
+                        return [
+                            { key: "enable", label: "啟用", },
+                            { key: "stage", label: "機能單位", },
+                            { key: "workStation", label: "工站", },
+                            { key: "name", label: "機台名稱", },
+                            { key: "identifier", label: "機台代碼", },
+                            { key: "check_name", label: "點檢名稱", },
+                            { key: "value", label: "設定值", },
+                            { key: "positive_error", label: "正誤差", },
+                            { key: "negative_error", label: "負誤差", },
+                            { key: "unit", label: "單位", },
+                            { key: "checkMethod", label: "點檢方法", },
+                            { key: "frequency", label: "頻率", },
+                            { key: "editor", label: "點檢人", },
+                            { key: "manager", label: "審核人", },
+                            //{ key: "time", label: "時間", },
+                        ];
+                    }
+                    else if(tabIndex === 1)  //分頁4 
+                    {
+                        return Object.keys(this.excelData[tabIndex][0]).map((key, index) => ({ key, label: this.title[index]/*(index + 1).toString()*/ }));
+                    }
+                }
+            },
+            formatTime(numb, format = '-') {
+                if (isNaN(numb)) {
+                    numb = numb.replace("“", ":");
+                    let date = "";
+                    let timeParts = numb.split(':');
+                    if (timeParts[0].indexOf("/") !== -1 && timeParts[0].indexOf(" ") !== -1) //還帶有日期
+                    {
+                        date = timeParts[0].split(" ")[0];
+                        date = this.formatDate(date) + " ";
+                        timeParts[0] = timeParts[0].split(" ")[1];
+                    }
+
+                    if (timeParts.length === 3) {
+                        return date + timeParts.join(":");
+                    } else if (timeParts.length === 2) {
+                        return date + timeParts.join(":") + ":00";
+                    } else {
+                        alert("無法解析的時間：" + numb);
+                    }
+                } else {
+                    let totalSeconds = numb * 24 * 60 * 60;
+                    let hours = Math.floor(totalSeconds / 3600);
+                    let minutes = Math.floor((totalSeconds % 3600) / 60);
+                    let seconds = Math.floor(totalSeconds % 60);
+                    let res = ((hours < 10) ? '0' + hours : hours) + ":" +
+                        ((minutes < 10) ? '0' + minutes : minutes) + ":" +
+                        ((seconds < 10) ? '0' + seconds : seconds);
+                    return res;
+                }
+            },
+
+            showModalXl(){
+                this.itemsImport = [];
+                this.$bvModal.show("modal-xl");
+            },
+            
+
+            /*itemInsert(){
+                let newItem = {
+                    new: true,
+                };
+                this.fields.forEach((field)=>{
+                    newItem[field.key] = "";
+                });
+
+                newItem.class_date = new Date().toISOString().slice(0, 10);
+                
+                this.itemEdit(newItem);
+            },*/
+            checkSelectedEditItemIsValid(){
+                let res = false;
+                if( this.selectedEditItem.stage !== "" &&
+                    this.selectedEditItem.workStation !== "" &&
+                    this.selectedEditItem.name !== "" &&
+                    this.selectedEditItem.identifier !== "" &&
+                    this.selectedEditItem.check_name !== "" && 
+                    this.selectedEditItem.unit !== "" && 
+                    this.selectedEditItem.checkMethod !== "" && 
+                    this.selectedEditItem.frequency !== "" && 
+                    this.selectedEditItem.editor !== "" && 
+                    this.selectedEditItem.manager !== "" && 
+                    this.selectedEditItem.time !== "" )
+                {
+                    res = true;
+                }
+                return res;
+            },
+            itemEdit(item){
+                this.selectedItem = item;
+                this.selectedEditItem = this.clonedObject(item);
+
+                //enable加工
+                if(this.selectedEditItem.enable === true)
+                {
+                    this.selectedEditItem.enable = "啟用"
+                }
+                else
+                {
+                    this.selectedEditItem.enable = "停用"
+                }
+
+                console.log(this.selectedEditItem);
+                this.$bvModal.show('modal-item-edit');
+            },
+            //單項新增
+            updatecheckSummary(){
+                //console.log(JSON.stringify(this.selectedEditItem));
+                
+                if(this.selectedEditItem.new)   //屬於新增項目
+                {
+                    //console.log(JSON.stringify(this.selectedEditItem));
+                    delete this.selectedEditItem.new;
+                    this.selectedItem.index = 0;
+                }
+                
+                this.selectedEditItem.report_date = new Date().toISOString().slice(0, 10);
+
+                // 確保 selectedEditItem.enable 是字符串
+                this.selectedEditItem.enable = this.selectedEditItem.enable.toString();
+
+                // 或確保 selectedEditItem.stage 是字串
+                this.selectedEditItem.stage = this.selectedEditItem.stage.toString();
+
+                // 或確保 selectedEditItem.frequency 是字符串
+                this.selectedEditItem.frequency = this.selectedEditItem.frequency.toString();
+
+                this.selectedEditItem.value =parseFloat(this.selectedEditItem.value); 
+                this.selectedEditItem.positive_error =parseFloat(this.selectedEditItem.positive_error);
+                this.selectedEditItem.negative_error =parseFloat(this.selectedEditItem.negative_error);
+
+                const editorRegex = /^[a-zA-Z0-9]+$/;
+                const managerRegex = /^[a-zA-Z0-9]+$/;
+                
+                if (!editorRegex.test(this.selectedEditItem.editor)) {
+                    this.toast("上傳失敗", "點檢人 只能輸入工號");
+                    this.$bvModal.show("modal-item-edit");
+                     
+                }
+
+                if (!managerRegex.test(this.selectedEditItem.manager)) {
+                    this.toast("上傳失敗", "審核人 只能輸入工號");
+                    this.$bvModal.show("modal-item-edit");
+                  
+                }
+                this.itemsImport = [this.selectedEditItem];
+                this.statusUpload = ["未上傳"];
+
+                if (!this.selectedEditItem.enable) {
+                    this.selectedEditItem.enable = true; 
+                }
+
+                this.startApiProcess()
+                
+            },
+            
+            itemInsert(refItem){
+                let newItem = {
+                    new: true,
+                };
+                this.fields.forEach((field)=>{
+                    if(refItem === null)
+                    {
+                        newItem[field.key] = "";
+                    }
+                    else
+                    {
+                        newItem[field.key] = refItem[field.key];
+                    }
+                });
+
+                newItem.index = this.rawItems.length;
+                //newItem.class_date = new Date().toISOString().slice(0, 10);
+                
+               
+                this.itemEdit(newItem);
+            },
+            
+            itemDateCheck_toShow(item, key)
+            {
+                if(item[key] === undefined)
+                {
+                    item[key] = '';
+                }
+                else
+                {
+                    //處理成 yyyy-MM-dd的造型
+                    item[key] = item[key].slice(0, 10);
+                    //處理成 yyyy-MM-dd的造型
+                    if(item[key] === '1970-01-01')
+                    {
+                        item[key] = '';
+                    }
+                }
+            },
+
+            toast(title, msg) {
+                this.$bvToast.toast(msg, {
+                    title: title,
+                    toaster: 'b-toaster-top-center',
+                    autoHideDelay: 2000,
+                    opacity: 1,
+                    appendToast: false,
+                })
+            },
+
+            itemDelete(){
+                //console.log("A")
+                this.$bvModal.show('modal-item-delete-confirm');
+            },
+            identifierDelete(){
+                //console.log("A")
+                this.$bvModal.show('modal-identifier-delete-confirm');
+            },
+            deleteQulitySummary(){
+                fetch(`http://10.57.20.154:8096/checklist-api/equipments/${this.selectedItem.identifier}/check-items/${this.selectedItem.check_name}`, 
+                {
+                    method: "DELETE",
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    //body: JSON.stringify([this.selectedItem])
+                })
+                .then(response => response.json())
+                .then(json => {
+                    //console.log(json);
+                    this.toast("刪除數據","刪除成功");
+                    this.searchProcess();
+
+                    this.$bvModal.hide('modal-item-edit');
+                })
+                .catch((error)=>
+                {
+                    this.toast('刪除數據', `刪除失敗：${error}`);
+                });
+            },
+            deleteidentifier(){
+                fetch(`http://10.57.20.154:8096/checklist-api/equipments/${this.selectedItem.identifier}`, 
+                {
+                    method: "DELETE",
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    //body: JSON.stringify([this.selectedItem])
+                })
+                .then(response => response.json())
+                .then(json => {
+                    //console.log(json);
+                    this.toast("刪除數據","刪除成功");
+                    this.searchProcess();
+
+                    this.$bvModal.hide('modal-item-edit');
+                })
+                .catch((error)=>
+                {
+                    this.toast('刪除數據', `刪除失敗：${error}`);
+                });
+            },
+
+
+            onFiltered(filteredItems) {
+                // Trigger pagination to update the number of buttons/pages due to filtering
+                this.totalRows = filteredItems.length;
+                this.currentPage = 1;
+            },
+            
+            perth: function(value){     //顯示數值的千分號
+                if (!value) return 0;
+                value = parseFloat(value);
+                // 獲取整數部分
+                const intPart = Math.trunc(value)
+                // 整數部分處理，增加,
+                const intPartFormat = intPart.toString().replace(/(\d)(?=(?:\d{3})+$)/g, '$1,')
+                // 預定義小數部分
+                let floatPart = ''
+                // 將數值截取為小數部分和整數部分
+                const valueArray = value.toString().split('.')
+                if (valueArray.length === 2) { // 有小數部分
+                    floatPart = valueArray[1].toString() // 取得小數部分
+                    return intPartFormat + '.' + floatPart
+                }
+                return intPartFormat + floatPart
+            },
+            wSign: function(value){
+                let res = value;
+                if(res > 100000)
+                {
+                    res = Math.round(res/10000);
+                    res = this.perth(res) + "萬";
+                }
+                else if(res > 10000)
+                {
+                    res = Math.round(res/1000) / 10;
+                    res = this.perth(res) + "萬";
+                }
+                else
+                {
+                    res = this.perth(res);
+                }
+
+                return res;
+            },
+            
+            weekday(aDateStr){
+                const dayArray = ["日","一","二","三","四","五","六"];
+                var res = '';
+                if(aDateStr !== '')
+                {
+                    res = dayArray[new Date(aDateStr).getDay()];
+                }
+                return res;
+            },
+
+            showVersion(){
+                alert(this.versionHistory.join("\r\n"));
+            },
+            showdetal(){
+                alert(this.versiondetal.join("\r\n"));
+            },
+
+            keycloakInit(){
+                this.keycloak = new window.Keycloak({
+                    realm: 'tpm',
+                    url: 'http://10.57.20.154:8092/auth',
+                    //realm: 'Ods-auth',
+                    //url: 'http://127.0.0.1:28080/auth',
+                    clientId: 'mfg-view-client',
+                });
+                // 初始化 Keycloak
+                //this.keycloak.init({
+                //    onLoad: 'login-required', // 或者 'check-sso'，具體取決於你的需求
+                //});
+                this.keycloak.init({
+                        onLoad: 'check-sso', // 或者其他你需要的選項
+                    }).then((authenticated) => {
+                        
+                        if (authenticated) {
+                            //console.log('User is authenticated');
+                            this.access_token = this.keycloak.token;
+                            this.updateUserInfoByToken(this.access_token);
+                        } 
+                        //else {
+                        //    console.log('User is not authenticated');
+                        //}
+                        this.keycloakAuthed = authenticated;
+
+                        this.searchProcess();
+                }).catch((error)=>{
+                    this.searchProcess();
+                });
+                
+                this.keycloakTimer = setInterval(async () => {
+                    try {
+                        if(this.keycloakAuthed)
+                        {
+                            const refreshed = await this.keycloak.updateToken(90);
+                            //console.log(refreshed ? 'Token was refreshed' : 'Token is still valid');
+                        }
+                    } catch (error) {
+                        console.error('Failed to refresh token:', error);
+                    }
+                }, 60000);
+            },
+            keycloakDispose(){
+                if(this.keycloakTimer !== null)
+                {
+                    clearInterval(this.keycloakTimer);
+                    this.keycloakTimer = null;
+                }
+            },
+            loginProcess: function(){
+                console.log("start login");
+                if(this.keycloak === null)
+                {
+                    this.keycloakInit();
+                }
+                else
+                {
+                    this.keycloak.login();
+                }
+                //this.$keyclock.logoutFn();
+            },
+            logoutProcess: function(){
+                console.log("start logout");
+                this.keycloakAuthed = false;
+                if(this.keycloak !== null)
+                {
+                    this.keycloak.logout();
+                }
+            },
+            loginoutProcess: function(){
+                if(!this.keycloakAuthed)    //需要登入
+                {
+                    this.loginProcess();
+                }
+                else
+                {
+                    this.logoutProcess();
+                }
+            },
+
+            //cookie相關函式 START
+            setCookie: function(key, value){
+                document.cookie = key + "=" + value;
+            },
+            setCookies: function(keys, values){
+                keys.forEach((key, idx) => {
+                    this.setCookie(key, values[idx]);
+                });
+            },
+            setCookieWithExpires: function(key, value, expiredSec){
+                this.setCookie(key, value + "; max-age=" + expiredSec);
+            },
+            getCookie: function(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+            },
+            //cookie相關函式 END
+
+            //和token相關的項目(methods) START
+            urlParams(key){
+                const urlSearchParams = new URLSearchParams(window.location.search);
+                return urlSearchParams.get(key) || '';
+            },
+            checkTokenProcess: function(){
+                //處理access_token
+                if(this.access_token === "" && this.urlParams("access_token") !== undefined)
+                {
+                    this.access_token = this.urlParams("access_token");
+                }
+                if(this.access_token !== "")
+                {
+                    this.updateUserInfoByToken(this.access_token);
+
+                    this.tokenIsFromUrl = true;
+                    this.keycloakAuthed = true;
+
+                    this.searchProcess();
+                }
+                else
+                {
+                    this.tokenIsFromUrl = false;
+                    this.keycloakAuthed = false;
+                    this.keycloakInit();
+                }
+            },
+            updateUserInfoByToken: function(token)
+            {
+                let strings = token.split(".");
+                this.userInfo = JSON.parse(decodeURIComponent(escape(window.atob(strings[1].replace(/-/g, "+").replace(/_/g, "/")))));
+                this.resourceDict = {};
+                this.fetchResourceIndex = 0;
+                this.tempResourceDict = {};
+                //this.fetchResourceProcess();
+            },
+            fetchResourceProcess: function()
+            {
+                if(this.userInfo === undefined || 
+                    this.userInfo.realm_access === undefined ||
+                    this.userInfo.realm_access.roles === undefined ||
+                    this.userInfo.realm_access.roles.length <= this.fetchResourceIndex)
+                {
+                    //fetchReosurceProcess完成
+                    //console.log("fetchResourceProcess done: " + JSON.stringify(this.resourceDict));
+                    this.resourceDict = this.tempResourceDict;
+                }
+                else
+                {
+                    const token = this.access_token;
+                    fetch(`http://10.57.20.154:8096/checklist-api/equipments/${this.userInfo.realm_access.roles[this.fetchResourceIndex]}/tpm-resources`,
+                    {
+                        method: 'GET', // 或其他 HTTP 方法，視你的需求而定
+                        headers: {
+                            'Authorization':`Bearer ${this.access_token}`, // 在這裡添加 Authorization 標頭
+                            'Content-Type': 'application/json', // 請根據 API 的要求設置 Content-Type
+                        },
+                    })
+                    .then((response) => {
+                        //console.log(response);
+                        return response.json();
+                    })
+                    .then( (response) => {
+                        //console.log(response);
+                        if(response.data !== undefined && Array.isArray(response.data))
+                        {
+                            response.data.forEach((item)=>{
+                                
+                                if(this.tempResourceDict[item.name] !== undefined)
+                                {
+                                    this.tempResourceDict[item.name] = this.combineResource(this.tempResourceDict[item.name], item);
+                                }
+                                else
+                                {
+                                    this.tempResourceDict[item.name] = item;
+                                }
+                            });
+                        }
+                        this.fetchResourceIndex++;
+                        this.fetchResourceProcess();
+                    })
+                    .catch((error) => {
+                        //有些找不到資源的role，會回404 not found，無須理會，只要繼續做就好
+                        this.fetchResourceIndex++;
+                        this.fetchResourceProcess();
+                    });
+                
+                }
+            },
+            clonedObject(obj){
+				return JSON.parse(JSON.stringify(obj));
+			},
+            combineResource(re1, re2)
+            {
+                //針對attrs內容，取兩個資源的聯集(基本上判斷有true的，就為true，有多的值，就補上去，不然會沿用第一個)
+                let re = this.clonedObject(re1);
+                let attrDict = {};
+                re1.attrs.forEach((item)=>{
+                    attrDict[item.key] = item;
+                });
+
+                re2.attrs.forEach((item)=>{
+                    if(attrDict[item.key] !== undefined)    //都有這個資源，那看有true的優先
+                    {
+                        if(item.value === "true")
+                        {
+                            attrDict[item.key].value = "true";
+                        }
+                    }
+                    else    //re2擁有re1沒有的資源
+                    {
+                        attrDict[item.key] = item;
+                    }
+                });
+                
+                re.attrs = Object.values(attrDict);
+
+                return re;
+            },
+            getAttributeFromResource(resource, attrKey)
+            {
+                let res = undefined;
+                if(this.resourceDict !== undefined &&
+                    this.resourceDict[resource] !== undefined &&
+                    this.resourceDict[resource].attrs !== undefined &&
+                    Array.isArray(this.resourceDict[resource].attrs))
+                {
+                    res = this.resourceDict[resource].attrs.find(x => x.key === attrKey).value;
+                }
+                return res;
+            },
+            //和token相關的項目(methods) END
+
+            
+            //API連動
+            editModalShown(b){
+                this.editModalIsShown = b;
+                console.log("editModalIsShown: " + this.editModalIsShown);
+            },
+            
+            startApiProcess() {
+                this.uploadIdx = 0;
+                this.exportProgress = 0;
+                this.exportProgressMax = 4 * this.itemsImport.length;
+                this.failedUploads = 0; 
+                this.fetchDataFromAPI1();
+            },
+
+            async fetchDataFromAPI1() {
+                this.exportProgress++;
+                const stageMapping = {
+                    沖壓: 'stamping',
+                    成型: 'inject',
+                    電鍍: 'plating',
+                    裝配: 'assembling',
+                };
+
+                const Stage = stageMapping[this.itemsImport[this.uploadIdx].stage] || this.itemsImport[this.uploadIdx].stage;
+
+                const response = await fetch(`http://10.57.20.154:8096/checklist-api/equipments/${this.itemsImport[this.uploadIdx].identifier}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                        'Content-Type': "application/json",
+                    },
+                    body: JSON.stringify({
+                        "workStation": this.itemsImport[this.uploadIdx].workStation,
+                        "stage": Stage,
+                        "name": this.itemsImport[this.uploadIdx].name,
+                    })
+                });
+                const data = await response.json();
+                await this.processDataForAPI1(data);
+            },
+
+            async processDataForAPI1(data) {
+                this.exportProgress++;
+                if (data.code !== undefined && data.code === 200) {
+                    this.statusUpload[this.uploadIdx] = "上傳成功";
+                    await this.fetchDataFromAPI2();
+                } else if (data.code !== undefined && (data.code === 401 || data.code === 409)) {
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:機台建立失敗";
+                    this.failedUploads++; 
+                    if (this.editModalIsShown) {
+                       // this.toast("上傳失敗", "原因:機台建立失敗");
+                    }
+                    this.nextUploadNode();
+                } else {
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:機台建立失敗";
+                    this.failedUploads++; 
+                    if (this.editModalIsShown) {
+                        //this.toast("上傳失敗", "原因:機台建立失敗");
+                    }
+                    this.nextUploadNode();
+                }
+            },
+
+            async fetchDataFromAPI2() {
+                this.exportProgress++;
+                const frequencyMapping = {
+                    日: 'day',
+                    月: 'month',
+                    週: 'week',
+                };
+
+                const value = this.itemsImport[this.uploadIdx].value;
+                const resultType = isNaN(value) ? 'text' : 'numerical';
+
+                const frequency = frequencyMapping[this.itemsImport[this.uploadIdx].frequency] || this.itemsImport[this.uploadIdx].frequency;
+                const response = await fetch(`http://10.57.20.154:8096/checklist-api/equipments/${this.itemsImport[this.uploadIdx].identifier}/check-items/${this.itemsImport[this.uploadIdx].check_name}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                        'Content-Type': "application/json",
+                    },
+                    body: JSON.stringify({
+                        "value": this.itemsImport[this.uploadIdx].value,
+                        "positiveError": this.itemsImport[this.uploadIdx].positive_error,
+                        "negativeError": this.itemsImport[this.uploadIdx].negative_error,
+                        "unit": this.itemsImport[this.uploadIdx].unit,
+                        "checkMethod": this.itemsImport[this.uploadIdx].checkMethod,
+                        "frequency": frequency,
+                        "enable": this.itemsImport[this.uploadIdx].enable.indexOf("啟用") !== -1 ? true : false,
+                        "resultType": resultType
+                    })
+                });
+                const data = await response.json();
+                await this.processDataForAPI2(data);
+            },
+
+            async processDataForAPI2(data) {
+                
+                if (data.code !== undefined && data.code === 200) {
+                    this.statusUpload[this.uploadIdx] = "點檢項上傳成功";
+                    await this.fetchDataFromAPI3();
+                } else {
+                    this.exportProgress++;
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:點檢項建立失敗";
+                    this.failedUploads++; 
+                    if (this.editModalIsShown) {
+                       // this.toast("上傳失敗", "原因:點檢項建立失敗");
+                    }
+                    this.nextUploadNode();
+                }
+            },
+
+            async fetchDataFromAPI3() {
+                this.exportProgress++;
+                const response = await fetch(`http://10.57.20.154:8096/checklist-api/tpm-editors/${this.itemsImport[this.uploadIdx].editor}/equipments/${this.itemsImport[this.uploadIdx].identifier}/check-items/${this.itemsImport[this.uploadIdx].check_name}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                    },
+                });
+                const data = await response.json();
+                await this.processDataForAPI3(data);
+            },
+
+            async processDataForAPI3(data) {
+                
+                if (data.code !== undefined && data.code === 200) {
+                    this.statusUpload[this.uploadIdx] = "點檢人上傳成功";
+                    await this.fetchDataFromAPI4();
+                } else if (data.code !== undefined && data.code === 404) {
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:點檢人不存在";
+                    this.failedUploads++; 
+                    if (this.editModalIsShown) {
+                        //this.toast("上傳失敗", "原因:點檢人不存在");
+                    }
+                    this.nextUploadNode();
+                } else {
+                    this.exportProgress++;
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:點檢人欄位請輸入工號";
+                    this.failedUploads++; 
+                    if (this.editModalIsShown) {
+                        //this.toast("上傳失敗", "原因:點檢人欄位請輸入工號");
+                    }
+                    this.nextUploadNode();
+                }
+            },
+
+            async fetchDataFromAPI4() {
+                this.exportProgress++;
+                const response = await fetch(`http://10.57.20.154:8096/checklist-api/tpm-managers/${this.itemsImport[this.uploadIdx].manager}/equipments/${this.itemsImport[this.uploadIdx].identifier}/check-items/${this.itemsImport[this.uploadIdx].check_name}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                    },
+                });
+                const data = await response.json();
+                await this.processDataForAPI4(data);
+            },
+
+            async processDataForAPI4(data) {
+                
+                if (data.code !== undefined && data.code === 200) {
+                    this.statusUpload[this.uploadIdx] = "上傳成功";
+                    if (this.editModalIsShown) {
+                       // this.toast("上傳成功", "上傳成功");
+                        this.$bvModal.hide("modal-item-edit");
+                    }
+                    this.nextUploadNode();
+                } else if (data.code !== undefined && data.code === 404) {
+                    this.exportProgress++;
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:審核人不存在";
+                    this.failedUploads++; 
+                    if (this.editModalIsShown) {
+                        //this.toast("上傳失敗", "原因:審核人不存在");
+                    }
+                    this.nextUploadNode();
+                } else {
+                    this.exportProgress++;
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:審核人欄位請輸入工號";
+                    this.failedUploads++; 
+                    if (this.editModalIsShown) {
+                       // this.toast("上傳失敗", "原因:審核人欄位請輸入工號");
+                    }
+                    this.nextUploadNode();
+                }
+            },
+
+            nextUploadNode() {
+                this.$forceUpdate();
+
+                if (this.uploadIdx + 1 < this.itemsImport.length) {
+                    this.uploadIdx = this.uploadIdx + 1;
+                    this.fetchDataFromAPI1();
+                } else {
+                    const successCount = this.itemsImport.length - this.failedUploads;
+                    this.searchProcess();
+                    this.showMessage("匯出流程完成", `完成${this.itemsImport.length}項點檢上傳，失敗${this.failedUploads}項`);
+                }
+            },
+            showMessage(title, msg) {
+                this.exportMessage = `${title}: ${msg}`;
+                this.toastVisible = true;
+            },
+            hideToast() {
+                this.toastVisible = false;
+            },
+
+            rowClass(item, type) {
+                if (!item || type !== 'row') return;
+                
+                
+                const idx = this.itemsImport.indexOf(item);
+                if (this.statusUpload[idx] && this.statusUpload[idx].includes("上傳失敗")) 
+                {
+                    return 'table-color-red';
+                }
+                else if(this.itemsImport.indexOf(item)%2 === 0)
+                {
+                    return 'table-even';
+                }
+                else
+                {
+                    return 'table-odd';
+                }
+            },
+            validClass(item, type) {
+
+
+                if (!item || type !== 'row') return;
+                
+                if (item.editor=== null ||  item.manager=== null)
+                {
+                    return 'table-color-red';
+                }
+                else if(this.items.indexOf(item)%2 === 0)
+                {
+                    return 'table-even';
+                }
+                else
+                {
+                    return 'table-odd';
+                }
+            },
+
+            //toast需掛上套件
+            toast(title, msg) { 
+                this.$bvToast.toast(msg, {
+                    title: title,
+                    toaster: 'b-toaster-top-center',
+                    autoHideDelay: 2000,
+                    opacity: 1,
+                    appendToast: false,
+                })
+            },
+        },
+        components:{
+        },
+    });
+</script>
+
+<style>
+    body {
+		background-color: #040c21;
+		color: #eeeeee;
+		font-size: 2.5vmin;
+	}
+
+	.page-title{
+        display: inline-block; 
+        margin: 0px; 
+        font-size: 3.2vmin; 
+        color:#a2d5f8; 
+    }
+
+	.header-logo{
+        float: left;
+        width: 5vw;
+        position: relative;
+        z-index: 2;
+        padding: 0.5vh 0.5vw;
+    }
+
+    .right-top-zone {
+        position: absolute;
+        right: 1vw;
+        top: 1vw;
+        display: flex;
+    }
+
+    .header {
+        width: 100vw;
+        height: 5vh;
+    }
+
+    .rule{
+        font-size: 1.0rem;
+        opacity: 0.2;
+    }
+    .rule:hover{
+        opacity: 1;
+    }
+
+    .footer{
+        font-size: 1.0rem;
+        position: fixed;
+        bottom: 0px;
+        opacity: 0.2;
+    }
+    .footer:hover{
+        opacity: 1;
+    }
+
+    .btn-costom-selection {
+        background-color: #599bd5 !important;
+        color: black !important;
+    }
+
+    .custom-container{
+        max-width: 95vw;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .custom-table thead th {
+        background-color: #194d86 !important;
+        color: #eeeeee !important;
+        font-size: 1.2rem;
+        padding: 0px;
+    }
+    .custom-table-import thead th {
+        background-color: #194d86 !important;
+        color: #eeeeee !important;
+        font-size: 1.2rem;
+        padding: 0px;
+    }
+    
+    /*
+    .custom-table tbody tr:nth-child(even) {
+        --bs-table-color-type: #eeeeee;
+        --bs-table-bg-type: #05142f;
+    }
+    .custom-table tbody tr:nth-child(odd) {
+        --bs-table-color-type: #eeeeee;
+        --bs-table-bg-type: #0e2a52;
+    }
+    */
+
+    .bg-costom-modal {
+        background-color: white !important;
+        color: black !important;
+    }
+
+    .modal-header .close {
+        padding: 1rem;
+        margin: -1rem -1rem -1rem auto;
+    }
+    button.close {
+        
+        padding: 0;
+        background-color: transparent;
+        border: 0;
+    }
+
+    /* width */
+    ::-webkit-scrollbar {
+    width: 10px;
+    }
+
+    /* Track */
+    ::-webkit-scrollbar-track {
+    box-shadow: inset 0 0 5px grey; 
+    border-radius: 10px;
+    }
+    
+    /* Handle */
+    ::-webkit-scrollbar-thumb {
+    background: #1a62ae; 
+    border-radius: 10px;
+    }
+
+    /* Handle on hover */
+    ::-webkit-scrollbar-thumb:hover {
+    background: #599bd5; 
+    }
+
+    .custom-bar button {
+        --bs-btn-bg: #1a62ae;
+        --bs-btn-border-color: #1a62ae;
+        --bs-btn-hover-bg: #0f3b6f;
+        --bs-btn-hover-border-color: #c0c4cc;
+    }
+    .custom-bar .dropdown-menu {
+        --bs-dropdown-bg: rgba(0,54,98,.9);
+        --bs-dropdown-border-color: #c0c4cc;
+        --bs-dropdown-link-color: #eeeeee;
+
+        --bs-dropdown-link-hover-color: #eeeeee;
+        --bs-dropdown-link-hover-bg: #1a62ae;
+    }
+    .custom-bar input[type=date]{
+        color-scheme: dark;
+        background-color: #0f3b6f;
+		border: 1px solid hsla(0,0%,100%,0);
+		border-radius: 4px;
+		margin-left: 1vw;
+        margin-right: 1vw;
+		font-size: 1rem;
+		text-align: center;
+    }
+
+    .toast:not(.show) {
+        display: block;
+        color: #0d6efd;
+        background-color: white;
+    }
+    .toast-header{
+        justify-content: space-between;
+    }
+
+    .mytooltip {
+        position: relative;
+    }
+
+    .pointer{
+        cursor: pointer;
+    }
+
+    .mytooltip .mytooltiptext {
+        visibility: hidden;
+        position:absolute; 
+        z-index:100;
+        border:0.1vmin;
+        background-color:#040c21;
+        border-style:solid;
+        border-width:0.1vmin;
+        border-color:white;
+        padding:0.3vmin;
+        color:white; 
+        top:3vmin; 
+        left:2vmin;
+        width: 10vw;
+        text-align: center;
+        opacity: 0.9;
+    }
+    .mytooltip:hover .mytooltiptext {
+        visibility: visible;
+    }
+
+    .table-color-red {
+        --bs-table-color: #fff700;
+        --bs-table-bg: #ff0000;
+        --bs-table-border-color: #a7b9b1;
+        --bs-table-striped-bg: #c7dbd2;
+        --bs-table-striped-color: #000;
+        --bs-table-active-bg: #bcd0c7;
+        --bs-table-active-color: #000;
+        --bs-table-hover-bg: #c1d6cc;
+        --bs-table-hover-color: #000;
+        color: var(--bs-table-color);
+        border-color: var(--bs-table-border-color);
+    }
+    .table-odd{
+        --bs-table-color: #eeeeee;
+        --bs-table-bg: #0e2a52;
+        --bs-table-border-color: #a7b9b1;
+        --bs-table-striped-bg: #c7dbd2;
+        --bs-table-striped-color: #000;
+        --bs-table-active-bg: #bcd0c7;
+        --bs-table-active-color: #000;
+        --bs-table-hover-bg: #c1d6cc;
+        --bs-table-hover-color: #000;
+        color: var(--bs-table-color);
+        border-color: var(--bs-table-border-color);
+    }
+    .table-even{
+        --bs-table-color: #eeeeee;
+        --bs-table-bg: #05142f;
+        --bs-table-border-color: #a7b9b1;
+        --bs-table-striped-bg: #c7dbd2;
+        --bs-table-striped-color: #000;
+        --bs-table-active-bg: #bcd0c7;
+        --bs-table-active-color: #000;
+        --bs-table-hover-bg: #c1d6cc;
+        --bs-table-hover-color: #000;
+        color: var(--bs-table-color);
+        border-color: var(--bs-table-border-color);
+    }
+
+    .bg-costom-modal {
+        background-color: white !important;
+        color: black !important;
+    }
+
+
+    .toast:not(.show) {
+        display: block;
+        color: #0d6efd;
+        background-color: white;
+    }
+    .toast-header{
+        justify-content: space-between;
+    }
+</style>

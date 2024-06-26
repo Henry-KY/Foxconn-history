@@ -1,0 +1,2284 @@
+<link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap/dist/css/bootstrap.min.css"/>
+<link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.css"/>
+<script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+<script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/keycloak-js@22.0.3/dist/keycloak.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.bare.js" ></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-polyfill/6.26.0/polyfill.js"></script>
+
+<head>
+	<link rel="icon" href="http://10.196.7.108:8060/F.ico">
+    <title>出差點名系統</title>
+</head>
+<body>
+    <div id="TravelCheck">
+        <!--http://10.35.22.72:88/static/images/logo.png-->
+        <!--/static/images/logo.png-->
+        <img v-if="!isPortal" class="header-logo" src="http://10.35.22.72:88/static/images/logo.png">
+
+        <p v-if="!isPortal" class="page-title">&emsp;出差點名系統</p>
+        
+        <!--登入按鈕-->
+        <login-module 
+            :auth-object-array="authObjectArray" 
+            @update-auth="updateUserAuth"
+            @update-portal="updatePortal"
+            @update-user="updateUser">
+
+        </login-module>
+
+        <div v-if="!isViewer" class="vh-100 d-flex justify-content-md-center align-items-center">
+            <button class="text-light bg-secondary rounded p-2">{{loginFailMsg}}</button>
+        </div>
+        <template v-else>
+
+
+
+            <div class="header"></div>
+            <!--搜尋列-->
+            <div class="custom-bar d-flex">
+                <b-col class="d-flex justify-content-md-center align-items-center">
+                    <!--廠區：
+                    <b-dropdown :text="selectedFactory" variant="primary me-5">
+                        <b-dropdown-item v-for="(item) in factoryList" :key="item" @click="selectedFactory=item">{{item}}</b-dropdown-item>
+                    </b-dropdown>-->
+                
+                    SBU：
+                    <b-dropdown :text="selectedSBU" variant="primary me-5">
+                        <b-dropdown-item v-for="(item) in sbuList" :key="item" @click="selectedSBU=item">{{item}}</b-dropdown-item>
+                    </b-dropdown>
+                
+                    派駐種類：
+                    <b-dropdown :text="SelectedAssignmentType" variant="primary me-5">
+                        <b-dropdown-item v-for="(item) in AssignmentTypeList" :key="item" @click="SelectedAssignmentType=item">{{item}}</b-dropdown-item>
+                    </b-dropdown>
+    
+                    <!--機台：
+                    <b-dropdown :text="selectedEquipment" variant="primary me-5">
+                        <b-dropdown-item v-for="(item) in equipmentList" :key="item" @click="selectedEquipment=item">{{item}}</b-dropdown-item>
+                    </b-dropdown> -->
+                    關鍵字：
+                    <b-col class="col-2 me-3">
+                        <b-form-input
+                            placeholder="輸入關鍵字搜尋"
+                            v-model="selectName"
+                            class="mb-sm-0">
+                        </b-form-input>
+                    </b-col>
+                    
+                <!--   <div>日期:</div>
+                    <input type="date" v-model="searchDate" v-on:change="searchProcess"/>
+                    -->
+            <template>
+                    從
+                    <input class="me-3" type="date" v-model="startDate"/>
+                    到
+                    <input class="me-5" type="date" v-model="endDate"/>
+            </template>
+            <b-button variant="primary" @click="searchProcess()">搜尋</b-button>
+            <p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>
+                </b-col>
+            </div>
+    
+            <hr>
+        
+            
+            <!--小表單內容-->
+            <b-container class="custom-container">
+                <b-row class="d-flex justify-content-md-center">
+                    <div class="button-container"></div>
+                    <b-col cols="6" class="d-flex justify-content-start align-items-center">
+                        <b-button v-if="isEditor" variant="success" @click="itemInsert()">新增人員</b-button>
+                        <p style="margin-right: 40px;"></p>
+                        <!--檔案匯入-->
+                        <template>
+                            <div>
+                                <b-button v-if="isEditor" variant="primary" @click="importmodal">檔案匯入</b-button>
+                                <b-modal 
+                                    hide-footer
+                                    header-bg-variant="costom-modal"
+                                    body-bg-variant="costom-modal"
+                                    size="xl" 
+                                    id="modalimport" 
+                                    title="選擇檔案"
+                                    @shown="chooseFile">
+                                    <b-button @click="chooseFile" variant="primary">選擇檔案</b-button>
+                                    <b-button v-if="processDone === true" variant="primary" @click="startApiProcess" >上傳</b-button>
+                                    <b-button v-else disabled>上傳</b-button>
+                                    <input ref="fileInput" type="file" id="excelFile" accept=".xls, .xlsx" style="display: none" @change="handleFileChange">
+    
+                                    <!--小表單Table-->
+                                    <div class="table-wrapper">
+                                    <b-table
+                                        ref="tableImport"
+                                        class="custom-table-import"
+                                        sticky-header="60vh"
+                                        show-empty
+                                        Bordered  
+                                        :busy.sync="showOverlay"  
+                                        :items="itemsImport"
+                                        no-provider-filtering
+                                        :fields="importfields"
+                                        empty-text="無內容"
+                                        :filter="filter"
+                                        :filter-included-fields="filterOn"
+                                        @filtered="onFiltered"
+                                        :tbody-tr-class="rowClass"
+                                    ></div>
+                                        <!--序號-->
+                                        <template #cell(index)="{ item, index}">
+                                            {{(perPage!=='All'?(currentPage-1)*perPage:0) + index +1}}
+                                            <!--<div v-if="Object.values(item).findIndex(x=>x===undefined)!==-1">
+                                                有空值!
+                                            </div>-->
+                                        </template>
+    
+                                        <!--上傳狀態-->
+                                        <template #cell(uploadstatus)="{ item, index}">
+                                            <p v-html="statusUpload[index]"></p>
+                                        </template>
+                                    </b-table>
+                                </b-modal>
+                            </div>
+                        </template>
+                        <template>
+                            <p style="margin-right: 40px;"></p>
+                            <div>
+                            <b-button @click="exportFile" variant="primary" >匯出Excel</b-button>
+                            </div>
+                            <p style="margin-right: 40px;"></p>
+                            <!--
+                            <div>
+                                <b-button @click="exportnullFile" variant="primary" >匯出空白表單</b-button>
+                            </div>
+                            -->
+                        </template>
+                    </b-col>
+                    <b-col cols="6" class="d-flex justify-content-end align-items-center"> 
+                        <b-form-radio-group
+                            v-model="dayType"
+                            :options="dayTypeOptions"
+                            buttons
+                            button-variant="outline-primary"
+                        ></b-form-radio-group>
+                    </b-col>
+                </b-row>
+                <!-- 表格元件 & Pagination -->
+                <b-overlay 
+                    variant="dark"
+                    :show="showOverlay" 
+                    rounded="sm">
+                    <!--編輯框&表格元件 -->
+                    <b-row class="mt-3 justify-content-center">
+                        
+                        <!--大表格table -->
+                        <b-table
+                            ref="table"
+                            class="custom-table"
+                            sticky-header="60vh"
+                            show-empty
+                            Bordered  
+                            dark
+                            :busy.sync="showOverlay"  
+                            :items="items"
+                            no-provider-filtering
+                            :fields="fields"
+                            :current-page="currentPage"
+                            :per-page="perPage==='All'?Number.MAX_SAFE_INTEGER:perPage"
+                            empty-text="無內容"
+                            :filter="filter"
+                            :filter-included-fields="filterOn"
+                            @filtered="onFiltered"
+                            :tbody-tr-class="validClass"
+                            label-sort-asc=""
+                            label-sort-desc=""
+                            label-sort-clear=""
+                        >
+                            <!--序號-->
+                            <template #cell(index)="{ item, index}">
+                                <div v-if="isEditor" class="mytooltip pointer">
+                                    <b-button v-if="isEditor" v-b-tooltip.hover variant="link":title="isEditor ? '編輯此項目' : ''" @click="itemEdit(item)">
+                                        {{(perPage!=='All'?(currentPage-1)*perPage:0) + index +1}}
+                                    </b-button>
+                                    
+                                </div>
+                                <template v-else>
+                                    {{(perPage!=='All'?(currentPage-1)*perPage:0) + index +1}}
+                                </template>
+                            </template>
+
+                            <!--出勤狀況-->
+                            <template #cell(analysis)="{ item, index}">
+                                <div v-html="checkAnalysis(item)"></div>
+                            </template>
+    
+                            <!--日期-->
+                            <template #cell()="{item, value, field}">
+                                <template v-if="field.key.indexOf('000Z') !== -1">
+                                    <template v-if="isHistoryDate(field.key)">
+                                        <b-button v-if="isEditor" v-b-tooltip.hover variant="link":title="(isEditor && isHistoryDate(field.key)) ? '編輯出勤狀況' : ''" @click="attendanceEdit(item, field.key)">
+                                            {{value}}
+                                        </b-button>
+                                        <template v-else>
+                                            {{value}}
+                                        </template>
+                                    </template>
+                                </template>
+                                <template v-else>
+                                    {{value}}
+                                </template>
+                            </template>
+                        </b-table>
+                    </b-row>
+                    <!-- Pagination -->
+                    <b-row class="col-12 align-items-center">
+                        <b-col md="6" class="my-1 d-flex justify-content-end">
+                            每頁筆數：<b-form-select :options="pageOptions" v-model="perPage" />
+                        </b-col>
+                        <b-col md="6" class="my-1 d-flex justify-content-start">
+                            <b-pagination 
+                                first-number
+                                last-number
+                                :total-rows="items.length" 
+                                :per-page="perPage==='All'?Number.MAX_SAFE_INTEGER:perPage" 
+                                v-model="currentPage" 
+                                class="my-0"/>
+                        </b-col>
+                    </b-row>
+                </b-overlay>
+            </b-container>
+
+
+
+        </template>
+
+        
+        <!--對話框(修改項目)-->
+        <b-modal id="modal-item-edit"
+            scrollable
+            @shown="editModalShown(true)"
+            @hidden="editModalShown(false)"
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+        >
+            <template #modal-title class="text-center">
+                出差人員 - 
+                <template v-if="selectedEditItem.new">
+                    新增項目
+                </template>
+                <template v-else>
+                    修改項目
+                </template>
+            </template>
+
+            <template #modal-footer="{ cancel, ok}">
+                <b-button v-if="!selectedEditItem.new && isEditor" variant="danger"  @click="mangerDelete()" v-b-modal.modal-item-delete-confirm>
+                    刪除
+                </b-button>
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button v-if="travelSelectedEditItemIsValid()===true" variant="primary" @click="updatetravelSummary()">
+                    {{selectedEditItem.new?"新增":"修改"}}
+                </b-button>
+                <b-button v-else disabled>
+                    {{selectedEditItem.new?"新增":"修改"}}
+                </b-button>
+            </template>
+
+            <template v-for="item in originFields">
+                <template v-if="item.key !== 'index'">
+                    <b>{{item.label}}：</b>
+                    
+
+                <!--下拉選單綁訂填寫項目-->
+                <template v-if="item.key==='sbu'">
+                        <div>
+                            <b-form-select
+                                class="w-100"
+                                class="my-custom-select"
+                                v-model="selectedEditItem.sbu"
+                                :options="sbuOptions"
+                            ></b-form-select>
+                        </div>
+                </template>
+                <template v-else-if="item.key==='assignment_type'">
+                    <div>
+                        <b-form-select
+                            class="w-100"
+                            class="my-custom-select"
+                            v-model="selectedEditItem.assignment_type"
+                            :options="assignmentType"
+                        ></b-form-select>
+                    </div>
+                </template>
+                    
+                    
+                    
+                    <b-form-input 
+                        v-else
+                        v-model="selectedEditItem[item.key]"
+                        :list="'my-list-'+item.key"
+                        :placeholder="'輸入'+item.label"
+                        :state="selectedEditItem[item.key] !== ''"
+                        class="mb-2 mr-sm-2 mb-sm-0"></b-form-input>
+                    <br>
+                </template>
+            </template>
+            
+            
+            <!--下面是輸入欄位的預設選項-->
+            <datalist id="my-list-product">
+                <option v-for="item in selectedItemProductList">{{item}}</option>
+            </datalist>
+
+            <datalist id="my-list-equipment">
+                <option v-for="item in selectedItemEquipmentList">{{item}}</option>
+            </datalist>
+
+            
+        </b-modal>
+        <!--對話框(確認刪除項目)-->
+        <b-modal id="modal-item-delete-confirm" 
+            scrollable
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+            @ok="deletetravelmanagement()"
+        >
+            <template #modal-title class="text-center">
+                人員 - 刪除項目確認
+            </template>
+            <template #modal-footer="{ cancel, ok}">
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button variant="primary" @click="ok()">
+                    確定
+                </b-button>
+            </template>
+
+            確定刪除此項目？
+            
+        </b-modal>
+        <!--刪除人員項目-->
+        <b-modal id="modal-identifier-delete-confirm" 
+            scrollable
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+            @ok="deleteidentifier()"
+        >
+            <template #modal-title class="text-center">
+                人員 - 刪除項目確認
+            </template>
+            <template #modal-footer="{ cancel, ok}">
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button variant="primary" @click="ok()">
+                    確定
+                </b-button>
+            </template>
+
+            確定刪除此項目？
+            
+        </b-modal>
+
+        <!--對話框(修改出勤)-->
+        <b-modal id="modal-attendance-edit"
+            scrollable
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+        >
+            <template #modal-title class="text-center">
+                修改出勤狀況
+            </template>
+
+            <template #modal-footer="{ cancel, ok}">
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button variant="primary" @click="attendanceEditClick()" >
+                    修改
+                </b-button>
+            </template>
+
+            <template v-if="selectedAttendanceItem !== null">
+                <b> 姓名：</b>
+                <span>
+                    {{selectedAttendanceItem.name}}
+                </span>
+                <br>
+                <b-form-group :label="localizeDate(selectedAttendanceDate)+'出勤狀況'">
+                    <b-form-radio v-model="selectedAttendanceValue" value="0">未確認</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="1">出勤</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="2">年休</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="3">病假</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="4">友誼關</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="5">外出</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="6">曠職</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="7">請假</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="8">述職</b-form-radio>
+                    <b-form-radio v-model="selectedAttendanceValue" value="9">返國</b-form-radio>
+                </b-form-group>
+            </template>
+            
+        </b-modal>
+        <!--對話框(出勤(內)修改項目)-->
+        <b-modal id="modal-attendance-edit-confirm" 
+            scrollable
+            header-bg-variant="costom-modal"
+            body-bg-variant="costom-modal"
+            @ok=" updateDetail()"
+        >
+            <template #modal-title class="text-center">
+                出勤狀況 - 修改項目確認
+            </template>
+            <template #modal-footer="{ cancel, ok}">
+                <b-button  @click="cancel()">
+                    取消
+                </b-button>
+                <b-button variant="primary" @click="ok()">
+                    確定
+                </b-button>
+            </template>
+
+            確定修改此項目？
+            
+        </b-modal>
+        <div class="footer">
+            <span style="cursor: pointer;" @click="showVersion">version: {{version}}</span>
+        </div>
+    </div>
+</body>
+
+<script src="/component/loginModule.js"></script>
+<script>
+
+    var app = new Vue({
+        el: '#TravelCheck',
+        data(){
+            return {
+                map: [],
+                selectedFactory: "All",
+                sbuOrigin: ['ACE','EMS','IDS','IDS1','IDS2','IDS3','TPENPI','海外製造處','越南廠區周邊機能',],
+                factoryOrigin:["雲中","義安"],
+                AssignmentTypeOrigin:['派駐','越幹','出差'],
+                residentOptions:['出差','長駐'],
+                vnunitOptions:['ABS','ACE','FAD','EMS','IDS1','IDS2','IDS3','海外製造處','中央',],
+                selectedSBU: "All",
+                SelectedAssignmentType: "All",
+                selectedEquipment: "All",
+                startDate: "",
+                endDate: "",
+                selectedStatus: "",
+                selectedfrequency: "",
+                assignmentType:['出差','派遣','越幹'],
+                sbuOptions:['ACE','EMS','IDS1','IDS2','IDS3','TPENPI','海外製造處','越南廠區周邊機能',],
+
+                countStr: "",
+                selectedItem:{},        //選取的item
+                selectedEditItem: {},   //選取後修改的item
+                selectName:"",
+                searchDate:"",
+                searchResult:[],
+                originalItems: [],
+                rawItems:[],
+                items: [],
+                itemsImport:[],
+                statusUpload:[],
+                uploadIdx: 0,
+                modalimport:[],
+                //上傳表單
+                importfields:[
+                                { key: "index",          label: "項次",      'class': 'text-center align-middle',},
+                                { key: "name",           label: "姓名",      'class': 'text-center align-middle',},
+                                { key: "work_number",    label: "工號",      'class': 'text-center align-middle',},
+                                { key: "sbu",            label: "SBU",       'class': 'text-center align-middle',},
+                                { key: "assignment_type",label: "駐地種類",   'class': 'text-center align-middle',},
+                                { key: "date",           label: "日期",      'class': 'text-center align-middle', formatter: value=>{return this.localizeDate(value ,'(未填寫)')}},
+                                { key: "check",          label: "出勤",      'class': 'text-center align-middle',},
+                ],
+                //原始欄位
+                originFields: [
+                                { key: "index",          label: "項次",      'class': 'text-center align-middle',thStyle: { minWidth: "5rem" }  },
+                                { key: "name",           label: "姓名",      'class': 'text-center align-middle',thStyle: { minWidth: "5rem" }  },
+                                { key: "work_number",    label: "工號",      'class': 'text-center align-middle',thStyle: { minWidth: "5rem" }  },
+                                { key: "sbu",            label: "SBU",       'class': 'text-center align-middle',thStyle: { minWidth: "7rem" }  },
+                                { key: "assignment_type",label: "駐地種類",   'class': 'text-center align-middle',thStyle: { minWidth: "7rem" }  },
+                                
+                ],
+                //主表單
+                fields: [
+                                { key: "index",          label: "項次",    sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "5rem" },         thClass:"fixed-head",                      tdClass:"fixed-col"},
+                                { key: "name",           label: "姓名",    sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "5rem" },         thClass:"fixed-head f-c2",                 tdClass:"fixed-col f-c2"},
+                                { key: "work_number",    label: "工號",    sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "7rem" },         thClass:"fixed-head f-c3",                 tdClass:"fixed-col f-c3"},
+                                { key: "sbu",            label: "SBU",     sortable: true,    'class': 'text-center align-middle',thStyle: { minWidth: "7rem" },        thClass:"fixed-head f-c4",                 tdClass:"fixed-col f-c4"},
+                                { key: "assignment_type",label: "駐地種類", sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "5rem" },         thClass:"fixed-head f-c5",                 tdClass:"fixed-col f-c5"}, 
+                                { key: "analysis",       label: "出勤統計",  sortable: false,   'class': 'text-center align-middle',thStyle: { minWidth: "10rem" },      thClass:"fixed-head f-c6 right-line",      tdClass:"fixed-col f-c6 right-line"}, 
+                ],
+                
+                modifiedExcelData: [],
+                excelData: [],
+                items: [], 
+                processDone: false,
+
+                editModalIsShown: false,
+
+
+                currentPage: 1,
+                perPage: 10,
+                totalRows: 0,
+                pageOptions: [ 5, 10, 20, 100],
+                sortBy: null,
+                sortDesc: false,
+                sortDirection: 'asc',
+                filter: null,
+                filterOn: ["userName", "firstName", "lastName", "email", "ldapInfo",],
+
+                selectedAttendanceItem: null,
+                selectedAttendanceDate: null,
+                selectedAttendanceValue: 0,
+
+                dayType: 1, //7天
+                dayTypeOptions: [
+                    {text: "區間", value: 0},
+                    {text: "7天", value: 1},
+                    {text: "1個月", value: 2},
+                ],
+                dayTotal: 7,
+
+                showOverlay: false,
+                
+                devMode: false,
+
+                loginFailMsg: "權限不足或登入失敗，請以觀看人員或編輯人員權限登入！",
+
+                //版本相關變量
+                version: "V1.06",
+                //建議把versionHistory倒置。最新的寫在最上面
+                versionHistory: [
+                "V1.06: [24/06/18]針對出勤解析，大小寫v以及中文出勤也可解析。",
+                "V1.05: [24/06/17]新增返國選項",
+                "V1.04: [24/05/31]修正日期解析",
+                "V1.03: [24/05/21]新增述職選項(8)",
+                "V1.02: [24/05/13]缺席與曠職性質重複改為年休",
+                "V1.01: [24/03/29]修正1個月的日期顯示起始日結束日；調整匯出檔案檔名；調整匯入模組，相容於匯出格式；調整工號為唯一鍵(編輯時固定的項目)；調整「檔案匯入」按鈕的可視權限",
+                "V1.00: 初版",
+                ],
+                
+                isPortal:true,
+                isViewer:true,
+                isEditor:false,
+                userInfo: {},
+            }
+        },
+        
+
+        created: function(){
+            //設定時間
+            let d = new Date();
+            this.endDate = d.toISOString().slice(0,10);
+            d.setMonth(d.getMonth()-1);
+            //this.startDate = d.toISOString().slice(0,10);
+            this.searchDate = new Date().toISOString().slice(0,10);
+            //console.log(123)
+            
+        },
+        mounted: function(){
+            this.searchProcess();
+        },
+        unmounted: function(){
+        },
+        watch:{
+
+            'selectedEditItem.vn_date': function(newValue) {
+                this.selectedEditItem.days = this.calculateDays(newValue, this.selectedEditItem.back_date);
+            },
+            'selectedEditItem.back_date': function(newValue) {
+                this.selectedEditItem.days = this.calculateDays(this.selectedEditItem.vn_date, newValue);
+            },
+
+            startDate: function(){
+                let dStart = new Date(this.startDate);
+                let dEnd = new Date(this.endDate);
+                if(dStart.getTime() > dEnd.getTime())
+                {
+                    //把endDate改掉
+                    dEnd = new Date(this.startDate);
+                    dEnd.setMonth(dEnd.getMonth()+1);
+                    this.endDate = dEnd.toISOString().slice(0, 10);
+                }
+            },
+            endDate: function(){
+                let dStart = new Date(this.startDate);
+                let dEnd = new Date(this.endDate);
+                if(dStart.getTime() > dEnd.getTime())
+                {
+                    //startDate
+                    dStart = new Date(this.endDate);
+                    dStart.setMonth(dStart.getMonth()-1);
+                    this.startDate = dStart.toISOString().slice(0, 10);
+                }
+            },
+
+            selectName: function(newValue){
+                this.filterProcess();
+            },
+            SelectedAssignmentType: function(newValue){
+                this.filterProcess();
+            },
+            selectedSBU: function(newValue){
+                this.filterProcess();
+            },
+            dayType: {
+                handler: function(newValue, oldValue){
+                    this.searchProcess();
+                },
+                immediate: false,
+            },
+        },
+        computed: {
+            //搜尋清單
+            factoryList:{
+                get(){
+                    let res = ["All"];
+
+                    res = res.concat(this. factoryOrigin);
+                    
+                    return res;
+                },
+            },
+
+            sbuList:{
+                get(){
+                    let res = ["All"];
+
+                    res = res.concat(this. sbuOrigin);
+                    
+                    return res;
+                },
+            },
+            AssignmentTypeList:{
+                get(){
+                    let res = ["All"];
+                    res = res.concat(this. AssignmentTypeOrigin);
+                    this.map.filter((item)=>{
+                        return (this.selectedSBU === "All" || this.selectedSBU === item.sbu);
+                    }).forEach(mapItem=>{
+                        if(res.indexOf(mapItem.description) === -1)
+                        {
+                            res.push(mapItem.description);
+                        }
+                    });
+
+                    this.SelectedAssignmentType = res[0];
+                    return res;
+                },
+            },
+            equipmentList:{
+                get(){
+                    
+                    let res = ["All"];
+
+                    this.map.filter((item)=>{
+                        return (this.selectedSBU === "All" || this.selectedSBU === item.sbu) &&
+                                (this.SelectedAssignmentType === "All" || this.SelectedAssignmentType === item.check_name);
+                    }).forEach(mapItem=>{
+                        if(res.indexOf(mapItem.equipment) === -1)
+                        {
+                            res.push(mapItem.equipment);
+                        }
+                    });
+
+                    this.selectedEquipment = res[0];
+                    
+                    return res;
+                },
+            },
+
+            selectedItemProductList:{
+                get(){
+                    let res = [];
+                    
+                    if(this.selectedEditItem !== undefined && this.selectedEditItem.function !== undefined)
+                    {
+                        this.map.filter((item)=>{
+                            return (this.selectedEditItem.function === item.function);
+                        }).forEach(mapItem=>{
+                            if(res.indexOf(mapItem.description) === -1)
+                        {
+                            res.push(mapItem.description);
+                        }
+                        });
+                    }
+                    
+                    return res;
+                },
+            },
+            selectedItemEquipmentList:{
+                get(){
+                    let res = [];
+                    if(this.selectedEditItem !== undefined && 
+                        this.selectedEditItem.function !== undefined && 
+                        this.selectedEditItem.product !== undefined)
+                    {
+                        this.map.filter((item)=>{
+                            return (this.selectedEditItem.function === item.function) &&
+                                    (this.selectedEditItem.product === item.description);
+                        }).forEach(mapItem=>{
+                            if(res.indexOf(mapItem.equipment) === -1)
+                            {
+                                res.push(mapItem.equipment);
+                            }
+                        });
+                    }
+                    
+                    return res;
+                },
+            },
+
+            //權限設定
+            authObjectArray:{
+                get(){
+                    return [{
+                            name: "isViewer",
+                            resource: "travel-management",
+                            attribute: "觀看權限",
+                        },{
+                            name: "isEditor",
+                            resource: "travel-management",
+                            attribute: "新增修改權限",
+                        }];
+                },
+            },
+        },
+        
+        methods:{
+            //Api.Get/更新主頁面
+            searchProcess(){
+                
+                let theDate = this.searchDate;
+                let days = 7;
+
+                if (this.dayType === 0) { // 區間
+                    // 計算日期範圍
+                    const startDate = new Date(this.startDate);
+                    const endDate = new Date(this.endDate);
+                    const diffTime = Math.abs(endDate - startDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // 包括起始日期和结束日期+1
+
+                    theDate = this.endDate;
+                    days = diffDays;
+                    this.dayTotal = days;
+                } else { 
+
+                    if(this.dayType === 1){//七天
+                        //do Nothing
+                    }
+                    if (this.dayType === 2) { // 1個月
+                        const d = new Date(theDate);
+                        const nextMonthFirstDay = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+                        const lastDayOfMonth = new Date(nextMonthFirstDay.getTime() - 1);
+                        theDate = lastDayOfMonth.toISOString().slice(0, 10);
+                        days = lastDayOfMonth.getDate();
+                    }
+
+                    
+                    this.endDate = theDate;
+                    this.dayTotal = days;
+                    this.startDate = new Date(this.endDate);
+                    this.startDate.setDate(this.startDate.getDate()-this.dayTotal + 1);
+                    this.startDate = this.startDate.toISOString().slice(0, 10);
+                }
+                   
+
+                
+                
+                
+                //console.log("search 1")
+                fetch(`http://10.35.7.180:31881/api/vn_attendance/attendance-detail?search-date=${theDate}&days=${days}`, 
+                {
+                    method: 'GET', // 或其他 HTTP 方法，視你的需求而定
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                        'Content-Type': 'application/json', // 請根據 API 的要求設置 Content-Type
+                    }
+                })
+                .then((response) => {
+                    //console.log("search 2")
+                    //console.log(response)
+                    //console.log(response);
+                    if(response.status !== 200)
+                    {
+                        this.toast('讀取總覽', `讀取失敗: ${response.status}`);
+                        //console.log(response);
+                        return {success: false};                        
+                    }
+                    else
+                    {
+                        return response.json();
+                    }
+                })
+                .then((response) => {
+                    //console.log("search 3")
+                    //console.log(response)
+                    if(response.success) {
+                        let tempItems = response.data;
+                        this.getFields();
+
+                        this.rawItems = tempItems;
+                        this.filterProcess();
+                        //console.log(this.fields)
+                        //console.log(tempItems)
+                    } else {
+                        this.toast('讀取總覽', `讀取失敗(${response.code})`);
+
+                        this.getFields();
+
+                        this.rawItems = []; // 返回空數組，表示沒有有效的數據
+                        this.filterProcess();
+                    }
+                    this.$refs.table.refresh();
+                })
+                .catch((error) => {
+                    //this.setManufacturingList();
+                    this.getFields();
+
+                    this.items = []; // 返回空數組，表示沒有有效的數據
+                });
+                
+            },
+
+            filterProcess(){
+                this.filterKeyword();
+                this.filterAssignmentType();
+                this.filtersbu();
+            },
+            filterKeyword(){
+                //console.log("filterKeyword: " + this.selectName);
+                const filterColumns = ["name","work_task","work_number","sbu","assignment_type"];
+
+                this.items = this.rawItems.filter((x) => {
+                    let res = false;
+
+                    //關鍵字搜尋
+                    if(this.selectName === "")
+                    {
+                        res = true;
+                    }
+                    else
+                    {
+                        for(let i = 0; i < filterColumns.length; i++)
+                        {
+                            if(x[filterColumns[i]] !== undefined &&
+                                x[filterColumns[i]] !== null && 
+                                x[filterColumns[i]].toLowerCase().indexOf(this.selectName.toLowerCase()) !== -1)
+                            {
+                                res = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    return res;
+                })
+            },
+            filterAssignmentType(){
+                this.items = this.items.filter((x) => {
+                    let res = false;
+
+                    //派駐種類過濾
+                    if(this.SelectedAssignmentType === "All" ||
+                        x.assignment_type === this.SelectedAssignmentType)
+                    {
+                        res = true;
+                    }
+                    return res;
+                })
+            },
+
+            toHtml: function(str){
+                return str.replace(/\n/g, '<br>');
+            },
+            filtersbu(){
+                this.items = this.items.filter((x) => {
+                    let res = false;
+
+                    //派駐種類過濾
+                    if(this.selectedSBU === "All" ||
+                        x.sbu === this.selectedSBU)
+                    {
+                        res = true;
+                    }
+                    return res;
+                })
+            },
+
+            toHtml: function(str){
+                return str.replace(/\n/g, '<br>');
+            },
+
+            calculateDays(date1 , date2) {
+                let result = "";
+                if (date1 !== "" && date2 !== "" ) {
+                    const start = new Date(date1.replace(/\//g, '-'));
+                    const end = new Date(date2.replace(/\//g, '-'));
+
+                    // 計算兩個日期之間的天數
+                    const timeDiff = Math.abs(end - start);
+                    const days = Math.ceil(timeDiff / (1000 * 60 * 60 * 24) + 1);
+                    
+
+                    result = days;
+                    
+                } else {
+                    // 如果起始日期或結束日期為空，清空計算結果
+                    result = 0;
+                }
+
+                    return result;
+                },
+
+            //Excel解析
+            chooseFile() {
+                this.$refs.fileInput.value = null;
+                this.$refs.fileInput.click();
+            },
+            readAndDisplayExcel() {
+                this.processDone = false;
+                this.excelData = [];
+                this.itemsImport = [];
+                this.statusUpload = [];
+
+                var input = document.getElementById('excelFile');
+                var file = input.files[0];
+
+                if (file) {
+                    var reader = new FileReader();
+
+                    reader.onload = (e) => {
+                        var data = new Uint8Array(e.target.result);
+                        var workbook = XLSX.read(data, {
+                            type: 'array'
+                        });
+
+                        // Get data from the first sheet only
+                        var firstSheetName = workbook.SheetNames[0];
+                        var sheet = workbook.Sheets[firstSheetName];
+                        //console.log (sheet)
+                        // Convert the first sheet to JSON
+                        var sheetData = XLSX.utils.sheet_to_json(sheet, {
+                            header: 1
+                        });
+
+                        if (sheetData.length > 0) {
+                            //delete row 1 (because it's title row)
+                            //sheetData = sheetData.slice(1);
+                            sheetData = sheetData.filter((item) => item.length > 0);
+                            
+                            
+                            
+                            
+                            //process a row into a object
+                            this.excelData = this.modifySheetData(sheetData);
+
+                            //item.filter((x)=>(x===undefined)).length===0
+                            //let emptyItemNumber = this.excelData.filter((item) => Object.values(item).findIndex((x)=>(x===undefined)) !== -1).length;
+                            //if(emptyItemNumber > 0)
+                            //{alert("警告!有" + emptyItemNumber + "項帶有空值的項目!");}
+                            
+
+                            this.itemsImport = this.excelData;
+                            this.statusUpload = Array(this.itemsImport.length).fill("未上傳");
+                            //console.log(this.itemsImport);
+                            //console.log(this.statusUpload);
+
+                            // Update the processDone flag
+                            //if(emptyItemNumber === 0) { }
+                            this.processDone = true;
+                            
+                        } else {
+                            alert('Selected Excel file is empty.');
+                        }
+                        
+                    };
+
+                    reader.readAsArrayBuffer(file);
+                }
+            },
+            handleFileChange() {
+                this.readAndDisplayExcel();
+            },
+            
+            //匯出excel檔案(套裝可以挪用改KEY)
+            exportFile(){
+
+                let filename = `人員出勤狀況_${new Date(this.startDate).toISOString().slice(0,10).replace(/-/g,'')}到${new Date(this.endDate).toISOString().slice(0,10).replace(/-/g,'')}`;
+                const workbook = new ExcelJS.Workbook();
+                //凍結窗格
+                const worksheet = workbook.addWorksheet(filename, {views:[{state: 'frozen', xSplit: 6, ySplit:1}]});
+
+                // 添加標題行
+                let outputFields = this.fields;//.filter(x=>x.label!=="序號"); //去掉序號
+                const headerRow = worksheet.addRow(outputFields.map(field => field.label));   
+                headerRow.font = { bold: true };
+
+                // 添加數據行
+                this.items.forEach(item => {
+                    const dataRow = worksheet.addRow(this.fields.map(field => {
+                        if(field.key.indexOf("000Z") !== -1)   //日期
+                        {
+                            return this.filedFormatter(item[field.key]);
+                        }
+                        else if(field.key === "analysis")
+                        {
+                            return this.checkAnalysis(item, false);
+                        }
+                        else
+                        {
+                            return item[field.key];
+                        }
+                    }));   //去掉序號
+                    // 你可以在這裡添加更多的格式設置，例如文本格式、日期格式等
+                    /*
+                    dataRow.border = {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' },
+                    };
+                    */
+                });
+
+                //const allBordersStyle = { style: 'thick' };
+                //worksheet.getCell('A1').border = { ...allBordersStyle, bottom: { style: 'thin' } };
+                //worksheet.getCell(`A${worksheet.rowCount}`).border = { ...allBordersStyle, top: { style: 'thin' } };
+                let widthArray = [6,12,14,14,14].concat(Array(this.fields.length-5).fill(15));
+                for(let x = 1; x <= worksheet.columns.length; x++)
+                {
+                    //指定寬度
+                    worksheet.getColumn(x).width = widthArray[x-1];
+                    for(let y = 1; y <= worksheet.rowCount; y++)
+                    {
+                        let aBorder = {
+                            top: {style: 'thin'},
+                            left: {style: 'thin'},
+                            bottom: {style: 'thin'},
+                            right: {style: 'thin'},
+                        };
+
+                        if(x === 1)
+                        {
+                            aBorder.left.style = 'thick';
+                        }
+                        else if(x === worksheet.columns.length)
+                        {
+                            aBorder.right.style = 'thick';
+                        }
+                        if(y === 1)
+                        {
+                            aBorder.top.style = 'thick';
+                            aBorder.bottom.style = 'thick';
+                        }
+                        else if(y === worksheet.rowCount)
+                        {
+                            aBorder.bottom.style = 'thick';
+                        }
+
+                        worksheet.getRow(y).getCell(x).border = aBorder;
+                    }
+                }
+
+
+                // 將工作簿保存為 Excel 文件
+                workbook.xlsx.writeBuffer().then(buffer => {
+                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `${filename}.xlsx`;
+                    link.click();
+                });
+            },
+            exportnullFile(){
+
+                let filename = `人員出勤狀況_${new Date(this.startDate).toISOString().slice(0,10).replace(/-/g,'')}到${new Date(this.endDate).toISOString().slice(0,10).replace(/-/g,'')}`;
+                const workbook = new ExcelJS.Workbook();
+                //凍結窗格
+                const worksheet = workbook.addWorksheet(filename, {views:[{state: 'frozen', xSplit: 6, ySplit:1}]});
+
+                // 添加標題行
+                let outputFields = this.fields;//.filter(x=>x.label!=="序號"); //去掉序號
+                const headerRow = worksheet.addRow(outputFields.map(field => field.label));   
+                headerRow.font = { bold: true };
+
+                // 添加數據行
+                /*
+                this.items.forEach(item => {
+                    const dataRow = worksheet.addRow(this.fields.map(field => {
+                        if(field.key.indexOf("000Z") !== -1)   //日期
+                        {
+                            return this.filedFormatter(item[field.key]);
+                        }
+                        else if(field.key === "analysis")
+                        {
+                            return this.checkAnalysis(item, false);
+                        }
+                        else
+                        {
+                            return item[field.key];
+                        }
+                    }));   //去掉序號
+                    // 你可以在這裡添加更多的格式設置，例如文本格式、日期格式等
+                    
+                    dataRow.border = {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' },
+                    };
+                    
+                });
+                */
+                //const allBordersStyle = { style: 'thick' };
+                //worksheet.getCell('A1').border = { ...allBordersStyle, bottom: { style: 'thin' } };
+                //worksheet.getCell(`A${worksheet.rowCount}`).border = { ...allBordersStyle, top: { style: 'thin' } };
+                let widthArray = [6,12,14,14,14].concat(Array(this.fields.length-5).fill(15));
+                for(let x = 1; x <= worksheet.columns.length; x++)
+                {
+                    //指定寬度
+                    worksheet.getColumn(x).width = widthArray[x-1];
+                    for(let y = 1; y <= worksheet.rowCount; y++)
+                    {
+                        let aBorder = {
+                            top: {style: 'thin'},
+                            left: {style: 'thin'},
+                            bottom: {style: 'thin'},
+                            right: {style: 'thin'},
+                        };
+
+                        if(x === 1)
+                        {
+                            aBorder.left.style = 'thick';
+                        }
+                        else if(x === worksheet.columns.length)
+                        {
+                            aBorder.right.style = 'thick';
+                        }
+                        if(y === 1)
+                        {
+                            aBorder.top.style = 'thick';
+                            aBorder.bottom.style = 'thick';
+                        }
+                        else if(y === worksheet.rowCount)
+                        {
+                            aBorder.bottom.style = 'thick';
+                        }
+
+                        worksheet.getRow(y).getCell(x).border = aBorder;
+                    }
+                }
+
+
+                // 將工作簿保存為 Excel 文件
+                workbook.xlsx.writeBuffer().then(buffer => {
+                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `${filename}.xlsx`;
+                    link.click();
+                });
+                },
+
+            modifySheetData(sheetData) {
+                //console.log(sheetData);
+
+                let hasAnalysis = sheetData[0][5] === "出勤統計";
+                let dateStartIdx = hasAnalysis?6:5;
+
+                let tempFields = [{ key: "index",          label: "項次",      'class': 'text-center align-middle',thStyle: { minWidth: "7rem" }},
+                                { key: "name",           label: "姓名",      'class': 'text-center align-middle',thStyle: { minWidth: "7rem" }},
+                                { key: "work_number",    label: "工號",      'class': 'text-center align-middle',},
+                                { key: "sbu",            label: "SBU",       'class': 'text-center align-middle',thStyle: { minWidth: "7rem" }},
+                                { key: "assignment_type",label: "駐地種類",   'class': 'text-center align-middle',thStyle: { minWidth: "7rem" }},
+                                //{ key: "date",           label: "日期",      'class': 'text-center align-middle', formatter: value=>{return this.localizeDate(value ,'(未填寫)')}},
+                                //{ key: "check",          label: "出勤",      'class': 'text-center align-middle',},
+                            ];
+                let dateArray = sheetData[0].slice(dateStartIdx).filter(x=>x !== undefined && this.formatDate(x) !== "").map(x=>this.formatDate(x));
+                //console.log(dateArray);
+                dateArray.forEach((aDate) => {
+                    //console.log(aDate);
+                    //console.log(this.formatDate(aDate));
+                    const dateObj = new Date(this.formatDate(aDate));
+                    const formattedDate = this.customDateFormat(dateObj); // 格式化日期，您需要自己實現 formatDate 方法
+                    const dayOfWeek = this.getDayOfWeek(dateObj); // 獲取星期幾，您需要自己實現 getDayOfWeek 方法
+
+                    tempFields.push({
+                        key: dateObj.toISOString(),
+                        label: `${formattedDate} (${dayOfWeek})`,
+                        class: 'text-center align-middle',
+                        thStyle: { minWidth: "10rem" },
+                        formatter: this.filedFormatter,
+                        
+                    })
+                });
+
+
+                let tempItems = [];
+
+                
+
+                sheetData.slice(1).forEach((row) => {
+                    if(isNaN(parseInt(row[0])))
+                    {
+                        //項次不合的話就略過
+                        return;
+                    }
+
+                    let obj = {
+                        index:row[0],       
+                        name:row[1],        
+                        work_number:row[2], 
+                        sbu:row[3],         
+                        assignment_type:row[4],
+                    };
+
+                    
+
+                    for(let i = 0; i < dateArray.length; i++)
+                    {
+                        const dateKey = new Date(this.formatDate(dateArray[i])).toISOString();
+                        if(row[dateStartIdx+i] === undefined)
+                        {
+                            obj[dateKey] = 0;
+                        }
+                        else if(row[dateStartIdx+i] === "V")
+                        {
+                            obj[dateKey] = 1;
+                        }
+                        else if(row[dateStartIdx+i] === "v")
+                        {
+                            obj[dateKey] = 1;
+                        }
+                        else if(row[dateStartIdx+i] === "出勤")
+                        {
+                            obj[dateKey] = 1;
+                        }
+                        else if(row[dateStartIdx+i] === "年休")
+                        {
+                            obj[dateKey] = 2;
+                        }
+                        else if(row[dateStartIdx+i] === "病假")
+                        {
+                            obj[dateKey] = 3;
+                        }
+                        else if(row[dateStartIdx+i] === "友誼關")
+                        {
+                            obj[dateKey] = 4;
+                        }
+                        else if(row[dateStartIdx+i] === "外出")
+                        {
+                            obj[dateKey] = 5;
+                        }
+                        else if(row[dateStartIdx+i] === "曠職")
+                        {
+                            obj[dateKey] = 6;
+                        }
+                        else if(row[dateStartIdx+i] === "請假")
+                        {
+                            obj[dateKey] = 7;
+                        }
+                        else if(row[dateStartIdx+i] === "述職")
+                        {
+                            obj[dateKey] = 8;
+                        }
+                        else if(row[dateStartIdx+i] === "返國")
+                        {
+                            obj[dateKey] = 9;
+                        }
+                    }
+                    
+                    tempItems.push(obj);
+                });
+
+                this.importfields = tempFields;
+                //console.log(tempItems)
+                return tempItems;
+            },
+            
+            //出勤統計計算
+            checkAnalysis(item, isHtml=true){
+                let analysisResult = {
+                    "0": {text: "未確認", value: 0},
+                    "1": {text: "出勤"  , value: 0},
+                    "2": {text: "年休"  , value: 0},
+                    "3": {text: "病假"  , value: 0},
+                    "4": {text: "友誼關", value: 0},
+                    "5": {text: "外出"  , value: 0},
+                    "6": {text: "曠職"  , value: 0},
+                    "7": {text: "請假"  , value: 0}, //formatter: "style='background-color:red; border-radius: 5px;'"},
+                    "8": {text: "述職"  , value: 0},
+                    "9": {text: "返國"  , value: 0},
+                };
+
+                Object.keys(item).forEach(aKey => {
+                    if(aKey.indexOf("000Z") !== -1) //日期
+                    {
+                        analysisResult[item[aKey].toString()].value++;
+                    }
+                });
+
+                let res = "";
+                for(let i = 1; i <= 9; i++) //檢查"未確認"以外的出勤狀態，只留value !== 0的//若有增加項次需注意更改數值
+                {
+                    if(analysisResult[i.toString()].value > 0)
+                    {
+                        if(isHtml)
+                        {
+                            res = res + `<div><span ${analysisResult[i.toString()].formatter}>${analysisResult[i.toString()].text}</span>: ${analysisResult[i.toString()].value}天</div>`
+                        }
+                        else
+                        {
+                            res = res + `${analysisResult[i.toString()].text}: ${analysisResult[i.toString()].value}天\r\n`
+                        }
+                    }
+                }
+
+                return res;
+            },
+            filedFormatter(value){
+                if(value === 0)
+                {
+                    return "";
+                }
+                else if(value === 1)
+                {
+                    return "V";
+                }
+                else if(value === 2)
+                {
+                    return "年休";
+                }
+                else if(value === 3)
+                {
+                    return "病假";
+                }
+                else if(value === 4)
+                {
+                    return "友誼關";
+                }
+                else if(value === 5)
+                {
+                    return "外出";
+                }
+                else if(value === 6)
+                {
+                    return "曠職";
+                }
+                else if(value === 7)
+                {
+                    return "請假";
+                }
+                else if(value === 8)
+                {
+                    return "述職";
+                }
+                else if(value === 9)
+                {
+                    return "返國";
+                }
+            },
+            getFields(){
+                let res = 
+                [   
+                    { key: "index",          label: "項次",    sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "5rem" },         thClass:"fixed-head",                      tdClass:"fixed-col"},
+                    { key: "name",           label: "姓名",    sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "5rem" },         thClass:"fixed-head f-c2",                 tdClass:"fixed-col f-c2"},
+                    { key: "work_number",    label: "工號",    sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "7rem" },         thClass:"fixed-head f-c3",                 tdClass:"fixed-col f-c3"},
+                    { key: "sbu",            label: "SBU",     sortable: true,    'class': 'text-center align-middle',thStyle: { minWidth: "7rem" },        thClass:"fixed-head f-c4",                 tdClass:"fixed-col f-c4"},
+                    { key: "assignment_type",label: "駐地種類", sortable: true,   'class': 'text-center align-middle',thStyle: { minWidth: "5rem" },         thClass:"fixed-head f-c5",                 tdClass:"fixed-col f-c5"}, 
+                    { key: "analysis",       label: "出勤統計",  sortable: false,   'class': 'text-center align-middle',thStyle: { minWidth: "10rem" },      thClass:"fixed-head f-c6 right-line",      tdClass:"fixed-col f-c6 right-line"}, 
+                ];
+                res = res.concat(this.generateWeekDateFields());
+                this.fields = res; 
+            },
+            formatDate(numb, format = '-') {
+                if(numb === undefined)
+                {
+                    return "";
+                }
+                else if (isNaN(numb)) {
+                    if(numb.indexOf("星期") !== -1 && numb.split(' ').length === 2)    //格式-> 3/01 (星期五)
+                    {
+                        //console.log(numb.split(' ')[0]);
+                        return this.formatDate(numb.split(' ')[0]);
+                    }
+                    else if(numb.indexOf("星期") !== -1 && numb.split('(').length === 2)    //格式-> 2024-05-19(星期日)
+                    {
+                        //console.log(numb.split(' ')[0]);
+                        return this.formatDate(numb.split('(')[0]);
+                    }
+                    else
+                    {
+                        let dateParts = numb.split('/');
+                        if (dateParts.length === 3) {
+                            let y = dateParts[0];
+                            if (!isNaN(y) && parseInt(y) > 100 && parseInt(y) < 2000) {
+                                return (parseInt(y) + 1911) + "-" + dateParts[1] + "-" + dateParts[2];
+                            } else {
+                                return dateParts[0] + "-" + 
+                                        (dateParts[1].length === 1? "0"+ dateParts[1] : dateParts[1]) + "-" + 
+                                        (dateParts[2].length === 1? "0"+ dateParts[2] : dateParts[2]);
+                            }
+                        } else if (dateParts.length === 2) {
+                            let yyyy = (this.excelData !== undefined && this.excelData[0] !== undefined && this.excelData[0][0] !== undefined)? this.excelData[0][0].class_date.slice(0, 4): new Date().getFullYear();
+                            return yyyy + "-" + 
+                                    (dateParts[0].length === 1? "0"+ dateParts[0] : dateParts[0]) + "-" + 
+                                    (dateParts[1].length === 1? "0"+ dateParts[1] : dateParts[1]);
+                        }
+                        else
+                        {
+                            dateParts = numb.split('-');
+                            if (dateParts.length === 3) {
+                                let y = dateParts[0];
+                                if (!isNaN(y) && parseInt(y) > 100 && parseInt(y) < 2000) {
+                                    return (parseInt(y) + 1911) + "-" + dateParts[1] + "-" + dateParts[2];
+                                } else {
+                                    return dateParts[0] + "-" + 
+                                            (dateParts[1].length === 1? "0"+ dateParts[1] : dateParts[1]) + "-" + 
+                                            (dateParts[2].length === 1? "0"+ dateParts[2] : dateParts[2]);
+                                }
+                            } else if (dateParts.length === 2) {
+                                let yyyy = (this.excelData !== undefined && this.excelData[0] !== undefined && this.excelData[0][0] !== undefined)? this.excelData[0][0].class_date.slice(0, 4): new Date().getFullYear();
+                                return yyyy + "-" + 
+                                        (dateParts[0].length === 1? "0"+ dateParts[0] : dateParts[0]) + "-" + 
+                                        (dateParts[1].length === 1? "0"+ dateParts[1] : dateParts[1]);
+                            }
+                            else
+                            {
+                                return "";
+                            }
+                        }
+                    }
+
+
+                    
+                } else {
+                    const time = new Date((numb - 25567) * 24 * 3600000 - 5 * 60 * 1000 - 43 * 1000 - 24 * 3600000 - 8 * 3600000)
+
+                    time.setYear(time.getFullYear())
+                    const year = time.getFullYear() + ''
+                    const month = time.getMonth() + 1 + ''
+                    const date = time.getDate() + ''
+                    if (format && format.length === 1) {
+                        return year + format + (month < 10 ? '0' + month : month) + format + (date < 10 ? '0' + date : date)
+                    } else {
+                        return year + (month < 10 ? '0' + month : month) + (date < 10 ? '0' + date : date);
+                    }
+                }
+
+            },
+            formatTime(numb, format = '-') {
+                if (isNaN(numb)) {
+                    numb = numb.replace("“", ":");
+                    let date = "";
+                    let timeParts = numb.split(':');
+                    if (timeParts[0].indexOf("/") !== -1 && timeParts[0].indexOf(" ") !== -1) //還帶有日期
+                    {
+                        date = timeParts[0].split(" ")[0];
+                        date = this.formatDate(date) + " ";
+                        timeParts[0] = timeParts[0].split(" ")[1];
+                    }
+
+                    if (timeParts.length === 3) {
+                        return date + timeParts.join(":");
+                    } else if (timeParts.length === 2) {
+                        return date + timeParts.join(":") + ":00";
+                    } else {
+                        alert("無法解析的時間：" + numb);
+                    }
+                } else {
+                    let totalSeconds = numb * 24 * 60 * 60;
+                    let hours = Math.floor(totalSeconds / 3600);
+                    let minutes = Math.floor((totalSeconds % 3600) / 60);
+                    let seconds = Math.floor(totalSeconds % 60);
+                    let res = ((hours < 10) ? '0' + hours : hours) + ":" +
+                        ((minutes < 10) ? '0' + minutes : minutes) + ":" +
+                        ((seconds < 10) ? '0' + seconds : seconds);
+                    return res;
+                }
+            },
+            generateWeekDateFields() {
+                // 生成一周日期欄位
+                const fields = [];
+                let dt = new Date(this.startDate);
+
+                // 遍歷七天，每天生成一個日期欄位
+                for (let i = 0; i < this.dayTotal; i++) {
+                    const date = new Date(dt);
+                    date.setDate(date.getDate() + i);
+
+                    const formattedDate = this.customDateFormat(date); // 格式化日期，您需要自己實現 formatDate 方法
+                    const dayOfWeek = this.getDayOfWeek(date); // 獲取星期幾，您需要自己實現 getDayOfWeek 方法
+
+                    fields.push({ 
+                        key: date.toISOString(), 
+                        label: `${formattedDate} (${dayOfWeek})`,
+                        class: 'text-center align-middle',
+                        thStyle: { minWidth: "7rem" },
+                        formatter: this.filedFormatter,
+                    });
+                }
+
+                return fields;
+            },
+            customDateFormat(date) {
+                //const year = date.getFullYear();
+                let month = date.getMonth() + 1;
+                if (month < 10) {
+                    month = '' + month; }
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${month}/${day}`;
+            },
+
+            getDayOfWeek(date) {
+                const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+                const dayIndex = date.getDay() ;
+                
+                return weekdays[dayIndex];
+            },
+
+            //更新暫存
+            importmodal(){
+                this.itemsImport = [];
+                this.$bvModal.show("modalimport");
+            },
+            
+            itemInsert(){
+                let newItem = {
+                    new: true,
+                };
+                this.fields.forEach((field)=>{
+                    newItem[field.key] = "";
+                });
+
+                newItem.index = this.rawItems.length;
+
+                //newItem.class_date = new Date().toISOString().slice(0, 10);
+                
+                this.itemEdit(newItem);
+            },
+            travelSelectedEditItemIsValid(){
+                let res = false;
+                if( 
+                    this.selectedEditItem.name !== "" &&
+                    this.selectedEditItem.work_number !== "" &&
+                    this.selectedEditItem.sbu !== "" &&
+                    this.selectedEditItem.assignment_type !== "")
+                {
+                    res = true;
+                }
+                return res;
+            },
+            itemEdit(item){
+                this.selectedItem = item;
+                this.selectedEditItem = this.clonedObject(item);
+
+                //console.log(this.selectedEditItem)
+                this.$bvModal.show('modal-item-edit');
+            },
+            //單項新增
+            updatetravelSummary(){
+
+                if(this.selectedEditItem.new)
+                {
+
+                    delete this.selectedEditItem.new;
+                    this.selectedEditItem.index = this.rawItems.length + 1;
+                }
+                //console.log(this.selectedEditItem)
+                this.itemsImport = [this.selectedEditItem];
+                this.statusUpload = ["未上傳"];
+                //console.log(this.selectedEditItem);
+                this.startApiProcess();
+                this.$bvModal.hide('modal-item-edit');
+            },
+            
+            mangerDelete(){
+                //console.log("A")
+                this.$bvModal.show('modal-item-delete-confirm');
+            },
+
+            deletetravelmanagement(){
+                fetch(`http://10.35.7.180:31881/api/vn_attendance/attendance-member`, 
+                {
+                    method: "DELETE",
+                    headers: {
+                        'Authorization': `Bearer ${this.access_token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify([this.selectedItem])
+                })
+                .then(response => response.json())
+                .then(json => {
+                    //console.log(json);
+                    this.toast("刪除數據","刪除成功");
+                    this.searchProcess();
+
+                    this.$bvModal.hide('modal-item-edit');
+                })
+                .catch((error)=>
+                {
+                    this.toast('刪除數據', `刪除失敗：${error}`);
+                });
+            },
+
+            isHistoryDate(date){
+                return new Date().getTime() > new Date(date).getTime();
+            },
+            
+            attendanceEditClick(){
+
+                this.$bvModal.show('modal-attendance-edit-confirm');
+            },
+            
+            attendanceEdit(item, date){
+                this.selectedAttendanceItem = item;
+                this.selectedAttendanceDate = date;
+                this.selectedAttendanceValue = item[date];
+
+                //console.log(this.selectedEditItem)
+                this.$bvModal.show('modal-attendance-edit');
+            },
+            async updateDetail(){
+                const response = await fetch(` http://10.35.7.180:31881/api/vn_attendance/attendance-detail`,
+                {
+                        method: 'PUT', // 或其他 HTTP 方法，視你的需求而定
+                        headers: {
+                            'Authorization': `Bearer ${this.access_token}`, // 在這裡添加 Authorization 標頭
+                            'Content-Type': "application/json",
+                        },
+                        //attendance_detail內容明細
+                        body: JSON.stringify([{
+                            work_number: this.selectedAttendanceItem.work_number,
+                            date: this.selectedAttendanceDate,
+                            check: this.selectedAttendanceValue
+                        }])
+                })
+                const data = await response.json();
+                if(data.success)
+                {
+                    //success
+                    this.toast("上傳成功", "差勤狀況修改成功");
+                    this.$bvModal.hide("modal-attendance-edit");
+                    this.searchProcess();
+                }
+                else
+                {
+                    //fail
+                    this.toast("上傳失敗", "差勤狀況修改失敗");
+                    //console.log("差勤狀況修改失敗");
+                }
+            },
+
+            localizeDate: function(tsString, defaultStr){
+                if(tsString  === "")
+                {
+                    return defaultStr;
+                }
+                //timestamptz若為0，就回傳空白
+                let d = new Date(tsString);
+                if(d.getTime() === 0)
+                {
+                    return defaultStr;
+                }
+                else
+                {
+                    return d.toLocaleString('sv', { hour12: false }).slice(0,10).replace(/-/g,"/");
+                }
+            },
+
+            toast(title, msg) {
+                this.$bvToast.toast(msg, {
+                    title: title,
+                    toaster: 'b-toaster-top-center',
+                    autoHideDelay: 2000,
+                    opacity: 1,
+                    appendToast: false,
+                })
+            },
+            
+            onFiltered(filteredItems) {
+                // Trigger pagination to update the number of buttons/pages due to filtering
+                this.totalRows = filteredItems.length;
+                this.currentPage = 1;
+            },
+            
+            perth: function(value){     //顯示數值的千分號
+                if (!value) return 0;
+                value = parseFloat(value);
+                // 獲取整數部分
+                const intPart = Math.trunc(value)
+                // 整數部分處理，增加,
+                const intPartFormat = intPart.toString().replace(/(\d)(?=(?:\d{3})+$)/g, '$1,')
+                // 預定義小數部分
+                let floatPart = ''
+                // 將數值截取為小數部分和整數部分
+                const valueArray = value.toString().split('.')
+                if (valueArray.length === 2) { // 有小數部分
+                    floatPart = valueArray[1].toString() // 取得小數部分
+                    return intPartFormat + '.' + floatPart
+                }
+                return intPartFormat + floatPart
+            },
+            wSign: function(value){
+                let res = value;
+                if(res > 100000)
+                {
+                    res = Math.round(res/10000);
+                    res = this.perth(res) + "萬";
+                }
+                else if(res > 10000)
+                {
+                    res = Math.round(res/1000) / 10;
+                    res = this.perth(res) + "萬";
+                }
+                else
+                {
+                    res = this.perth(res);
+                }
+
+                return res;
+            },
+            
+            weekday(aDateStr){
+                const dayArray = ["日","一","二","三","四","五","六"];
+                var res = '';
+                if(aDateStr !== '')
+                {
+                    res = dayArray[new Date(aDateStr).getDay()];
+                }
+                return res;
+            },
+
+            showVersion(){
+                alert(this.versionHistory.join("\r\n"));
+            },
+
+            
+            //cookie相關函式 START
+            setCookie: function(key, value){
+                document.cookie = key + "=" + value;
+            },
+            setCookies: function(keys, values){
+                keys.forEach((key, idx) => {
+                    this.setCookie(key, values[idx]);
+                });
+            },
+            setCookieWithExpires: function(key, value, expiredSec){
+                this.setCookie(key, value + "; max-age=" + expiredSec);
+            },
+            getCookie: function(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+            },
+            //cookie相關函式 END
+
+            //和token相關的項目(methods) START
+            urlParams(key){
+                const urlSearchParams = new URLSearchParams(window.location.search);
+                return urlSearchParams.get(key) || '';
+            },
+            
+            
+            clonedObject(obj){
+				return JSON.parse(JSON.stringify(obj));
+			},
+                    
+            
+            editModalShown(b){
+                this.editModalIsShown = b;
+                //console.log("editModalIsShown: " + this.editModalIsShown);
+            },
+            
+            //上傳API
+            startApiProcess(){   
+                //console.log("123")
+                this.uploadIdx = 0;
+
+                this.fetchDataFromAPI1();
+                
+            },
+            async fetchDataFromAPI1() {
+                //console.log("start fetchDataFromAPI1");
+
+                const response = await fetch(`http://10.35.7.180:31881/api/vn_attendance/attendance-member`,
+                {
+                        method: 'PUT', // 或其他 HTTP 方法，視你的需求而定
+                        headers: {
+                            'Authorization': `Bearer ${this.access_token}`, // 在這裡添加 Authorization 標頭
+                            'Content-Type': "application/json",
+                        },
+                        body: JSON.stringify([{
+                            "index":this.itemsImport[this.uploadIdx].index,         
+                            "name":this.itemsImport[this.uploadIdx].name,          
+                            "work_number":this.itemsImport[this.uploadIdx].work_number,  
+                            "sbu":this.itemsImport[this.uploadIdx].sbu,
+                            "assignment_type":this.itemsImport[this.uploadIdx].assignment_type,
+                        }])
+                })
+                const data = await response.json();
+                //console.log("end fetchDataFromAPI1");
+                await this.processDataForAPI1(data);
+                
+            },
+            async processDataForAPI1(data) {
+            // Check and process data for API1
+                if(data.success)
+                {
+                    //success
+                    this.statusUpload[this.uploadIdx] = "人員上傳成功";
+                    await this.fetchDataFromAPI2();
+                }
+                else
+                {
+                    //fail
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:人員上傳失敗";
+                    if(this.editModalIsShown)
+                    {
+                        this.toast("上傳失敗", "原因:人員上傳失敗")
+                    }
+                    //console.log("人員上傳失敗");
+                    //console.log(data);
+
+                    this.nextUploadNode();
+                }
+
+
+                
+            },
+
+            async fetchDataFromAPI2() {
+                //console.log("start fetchDataFromAPI2");
+
+                let details = [];
+                let obj = this.itemsImport[this.uploadIdx];
+                Object.keys(obj).forEach((key)=>{
+                    if(key.indexOf("000Z") !== -1)  //代表是日期格式
+                    {
+                        details.push({
+                            work_number: obj.work_number,
+                            date: key,
+                            check: obj[key],
+                        })
+                    }
+                });
+
+                const response = await fetch(` http://10.35.7.180:31881/api/vn_attendance/attendance-detail`,
+                {
+                        method: 'PUT', // 或其他 HTTP 方法，視你的需求而定
+                        headers: {
+                            'Authorization': `Bearer ${this.access_token}`, // 在這裡添加 Authorization 標頭
+                            'Content-Type': "application/json",
+                        },
+                        //attendance_detail內容明細
+                        body: JSON.stringify(details)
+                })
+                const data = await response.json(); 
+                //console.log("end fetchDataFromAPI2");
+                await this.processDataForAPI2(data);
+            },
+            async processDataForAPI2(data) {
+                // Check and process data for API2
+                // Highlight rows if needed
+
+                if(data.success)
+                {
+                    //success
+                    this.statusUpload[this.uploadIdx] = "人員資訊上傳成功";
+                    
+                    this.nextUploadNode();
+                }
+                else
+                {
+                    //fail
+                    this.statusUpload[this.uploadIdx] = "上傳失敗<br>原因:點檢項建立失敗";
+                    if(this.editModalIsShown)
+                    {
+                        this.toast("上傳失敗", "原因:人員資訊錯誤")
+                    }
+                    //console.log("人員資訊上傳失敗");
+                    //console.log(data);
+
+                    this.nextUploadNode();
+                }
+            },
+
+
+
+
+            nextUploadNode(){
+
+                this.$forceUpdate();
+
+                if(this.uploadIdx + 1 < this.itemsImport.length)
+                {
+                    this.uploadIdx = this.uploadIdx + 1;
+                    this.fetchDataFromAPI1();
+                }
+                else
+                {
+                    this.searchProcess();
+                    this.toast("人員資訊上傳","成功");
+                    //console.log('上傳完成');
+                }
+                this.searchProcess();
+            },
+
+            rowClass(item, type) {
+                if (!item || type !== 'row') return;
+                
+                if (Object.values(item).findIndex(x=>x===undefined)!==-1) 
+                {
+                    return 'table-even';
+                }
+                else if(this.itemsImport.indexOf(item)%2 === 0)
+                {
+                    return 'table-even';
+                }
+                else
+                {
+                    return 'table-odd';
+                }
+            },
+            
+            validClass(item, type) {
+
+
+                if (!item || type !== 'row') return;
+                
+                if (item.editor=== null ||  item.manager=== null)
+                {
+                    return 'table-color-red';
+                }
+                else if(this.items.indexOf(item)%2 === 0)
+                {
+                    return 'table-even';
+                }
+                else
+                {
+                    return 'table-odd';
+                }
+            },
+
+            //toast需掛上套件
+            toast(title, msg) {
+                this.$bvToast.toast(msg, {
+                    title: title,
+                    toaster: 'b-toaster-top-center',
+                    autoHideDelay: 2000,
+                    opacity: 1,
+                    appendToast: false,
+                })
+            },
+        
+        
+            updateUserAuth(authDict){
+                //console.log(authDict);
+                this.isViewer = authDict.isViewer;
+                this.isEditor = authDict.isEditor;
+            },
+            updatePortal(isPortal)
+            {
+                this.isPortal = isPortal;
+            },
+            updateUser(userInfo){
+                this.userInfo = userInfo;
+            },
+        },
+        components:{
+            loginModule,
+        },
+    });
+</script>
+
+<style>
+    body {
+		background-color: #040c21;
+		color: #eeeeee;
+		font-size: 2.5vmin;
+	}
+
+	.page-title{
+        display: inline-block; 
+        margin: 0px; 
+        font-size: 3.2vmin; 
+        color:#a2d5f8; 
+    }
+
+	.header-logo{
+        float: left;
+        width: 5vw;
+        position: relative;
+        z-index: 2;
+        padding: 0.5vh 0.5vw;
+    }
+
+    .right-top-zone {
+        position: absolute;
+        right: 1vw;
+        top: 1vw;
+        display: flex;
+    }
+
+    .header {
+        width: 100vw;
+        height: 5vh;
+    }
+
+    .footer{
+        font-size: 1.0rem;
+        position: fixed;
+        bottom: 0px;
+        opacity: 0.2;
+    }
+    .footer:hover{
+        opacity: 1;
+    }
+
+    .btn-costom-selection {
+        background-color: #599bd5 !important;
+        color: black !important;
+    }
+
+    .custom-container{
+        max-width: 95vw;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .table-wrapper {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+    table{  
+        border-collapse: separate !important;   /*border-collapse和border=spacing是讓固定標頭和固定欄位的邊線不會跑掉*/
+        border-spacing: 0px !important;
+    }
+    .custom-table {
+        padding-left: 0px;
+    }
+    .custom-table thead th {
+        background-color: #194d86 !important;
+        color: #eeeeee !important;
+        font-size: 1.2rem;
+        padding: 0px;
+    }
+    .custom-table-import thead th {
+        background-color: #194d86 !important;
+        color: #eeeeee !important;
+        font-size: 1.2rem;
+        padding: 0px;
+    }
+    
+    /*
+    .custom-table tbody tr:nth-child(even) {
+        --bs-table-color-type: #eeeeee;
+        --bs-table-bg-type: #05142f;
+    }
+    .custom-table tbody tr:nth-child(odd) {
+        --bs-table-color-type: #eeeeee;
+        --bs-table-bg-type: #0e2a52;
+    }
+    */
+
+    .bg-costom-modal {
+        background-color: white !important;
+        color: black !important;
+    }
+
+    .modal-header .close {
+        padding: 1rem;
+        margin: -1rem -1rem -1rem auto;
+    }
+    button.close {
+        
+        padding: 0;
+        background-color: transparent;
+        border: 0;
+    }
+
+    /* width */
+    ::-webkit-scrollbar {
+    width: 10px;
+    }
+
+    /* Track */
+    ::-webkit-scrollbar-track {
+    box-shadow: inset 0 0 5px grey; 
+    border-radius: 10px;
+    }
+    
+    /* Handle */
+    ::-webkit-scrollbar-thumb {
+    background: #1a62ae; 
+    border-radius: 10px;
+    }
+
+    /* Handle on hover */
+    ::-webkit-scrollbar-thumb:hover {
+    background: #599bd5; 
+    }
+
+    .custom-bar button {
+        --bs-btn-bg: #1a62ae;
+        --bs-btn-border-color: #1a62ae;
+        --bs-btn-hover-bg: #0f3b6f;
+        --bs-btn-hover-border-color: #c0c4cc;
+    }
+    .custom-bar .dropdown-menu {
+        --bs-dropdown-bg: rgba(0,54,98,.9);
+        --bs-dropdown-border-color: #c0c4cc;
+        --bs-dropdown-link-color: #eeeeee;
+
+        --bs-dropdown-link-hover-color: #eeeeee;
+        --bs-dropdown-link-hover-bg: #1a62ae;
+    }
+    .custom-bar input[type=date]{
+        color-scheme: dark;
+        background-color: #0f3b6f;
+		border: 1px solid hsla(0,0%,100%,0);
+		border-radius: 4px;
+		margin-left: 1vw;
+        margin-right: 1vw;
+		font-size: 1rem;
+		text-align: center;
+    }
+
+    .toast:not(.show) {
+        display: block;
+        color: #0d6efd;
+        background-color: white;
+    }
+    .toast-header{
+        justify-content: space-between;
+    }
+
+    .mytooltip {
+        position: relative;
+    }
+
+    .pointer{
+        cursor: pointer;
+    }
+
+    .mytooltip .mytooltiptext {
+        visibility: hidden;
+        position:absolute; 
+        z-index:100;
+        border:0.1vmin;
+        background-color:#040c21;
+        border-style:solid;
+        border-width:0.1vmin;
+        border-color:white;
+        padding:0.3vmin;
+        color:white; 
+        top:3vmin; 
+        left:2vmin;
+        width: 10vw;
+        text-align: center;
+        opacity: 0.9;
+    }
+    .mytooltip:hover .mytooltiptext {
+        visibility: visible;
+    }
+
+    .table-color-red {
+        --bs-table-color: #fff700;
+        --bs-table-bg: #ff0000;
+        --bs-table-border-color: #a7b9b1;
+        --bs-table-striped-bg: #c7dbd2;
+        --bs-table-striped-color: #000;
+        --bs-table-active-bg: #bcd0c7;
+        --bs-table-active-color: #000;
+        --bs-table-hover-bg: #c1d6cc;
+        --bs-table-hover-color: #000;
+        color: var(--bs-table-color);
+        border-color: var(--bs-table-border-color);
+    }
+    .table-odd{
+        --bs-table-color: #eeeeee;
+        --bs-table-bg: #0e2a52;
+        --bs-table-border-color: #a7b9b1;
+        --bs-table-striped-bg: #c7dbd2;
+        --bs-table-striped-color: #000;
+        --bs-table-active-bg: #bcd0c7;
+        --bs-table-active-color: #000;
+        --bs-table-hover-bg: #c1d6cc;
+        --bs-table-hover-color: #000;
+        color: var(--bs-table-color);
+        border-color: var(--bs-table-border-color);
+    }
+    .table-even{
+        --bs-table-color: #eeeeee;
+        --bs-table-bg: #05142f;
+        --bs-table-border-color: #a7b9b1;
+        --bs-table-striped-bg: #c7dbd2;
+        --bs-table-striped-color: #000;
+        --bs-table-active-bg: #bcd0c7;
+        --bs-table-active-color: #000;
+        --bs-table-hover-bg: #c1d6cc;
+        --bs-table-hover-color: #000;
+        color: var(--bs-table-color);
+        border-color: var(--bs-table-border-color);
+    }
+
+    .bg-costom-modal {
+        background-color: white !important;
+        color: black !important;
+    }
+
+
+    .toast:not(.show) {
+        display: block;
+        color: #0d6efd;
+        background-color: white;
+    }
+    .toast-header{
+        justify-content: space-between;
+    }
+    .fixed-head {
+        width: 5rem;
+        position: sticky;
+        left: 0;
+        z-index: 5 !important;
+        
+    }
+    .fixed-col {
+        width: 5rem;
+        position: sticky;
+        left: 0;
+        z-index: 2;
+    }
+    .f-c2 {
+        left: 5rem;
+    }
+    .f-c3 {
+        left: 10rem;
+    }
+    .f-c4 {
+        left: 17rem;
+    }
+    .f-c5 {
+        left: 24rem;
+    }
+    .f-c6 {
+        left: 29rem;
+    }
+    .right-line{    /*這是為了做固定欄的右邊分隔線*/
+        border-style: none solid none none;
+        border-width: 1px;
+        border-color: #A0A0A0;
+    }
+</style>
