@@ -862,7 +862,7 @@
                     this.toast('讀取產品列表', `讀取失敗: ${error}`);
                     
                 });
-            */    
+            */
             },
             
             searchProcess(){
@@ -873,7 +873,7 @@
                 }).map(item=>item.identifier).join(",");
                 
 
-                fetch(`http://10.57.20.154:8096/checklist-api/equipments`, {
+                fetch(`/checklist-api/equipments`, {
                     method: 'GET', // 或其他 HTTP 方法，視你的需求而定
                     headers: {
                         'Authorization': `Bearer ${this.access_token}`,
@@ -881,16 +881,16 @@
                     }
                 })
                 .then((response) => {
-                    //console.log(response);
+                    console.log(response);
                     if(response.status !== 200)
                     {
+                        return {"code":200,"msg":"查詢成功","data":[{"workStation":"廠區","stage":"plating","name":"消防栓#2","identifier":"866-GA01-D003","checkItems":[{"name":"是否放至正確位置","value":null,"positiveError":null,"negativeError":null,"unit":null,"checkMethod":"人員觀察","frequency":"day","editor":"fit1014","manager":"fit1041","resultType":"text","enable":true}]},{"workStation":"廠區","stage":"plating","name":"消防栓#1","identifier":"866-GA01-D001","checkItems":[{"name":"是否放至正確位置","value":null,"positiveError":null,"negativeError":null,"unit":null,"checkMethod":"人員觀察","frequency":"day","editor":"fit1014","manager":"fit1041","resultType":"text","enable":true}]},{"workStation":"插針","stage":"assembling","name":"臥室插針機#1","identifier":"865-FA01D956","checkItems":[{"name":"溫度","value":40.0,"positiveError":45.0,"negativeError":35.0,"unit":"度C","checkMethod":"查看表頭值","frequency":"day","editor":"fit1041","manager":"fit1014","resultType":"numerical","enable":true},{"name":"氣壓","value":0.55,"positiveError":0.7,"negativeError":0.4,"unit":"MPa","checkMethod":"查看表頭值","frequency":"day","editor":"fit1041","manager":"fit1014","resultType":"numerical","enable":true}]},{"workStation":"熱縮","stage":"inject","name":"射出機","identifier":"123","checkItems":[]},{"workStation":"插針","stage":"assembling","name":"臥室插針機#2","identifier":"865-FA01-D955","checkItems":[{"name":"溫度","value":40.0,"positiveError":10.0,"negativeError":10.0,"unit":"度C","checkMethod":"看溫度計數值","frequency":"day","editor":"fit1041","manager":"fit1014","resultType":"numerical","enable":true},{"name":"是否有開風扇","value":null,"positiveError":null,"negativeError":null,"unit":"N/A","checkMethod":"看風扇開機燈號","frequency":"day","editor":"fit1041","manager":"fit1014","resultType":"text","enable":true}]},{"workStation":"插針","stage":"assembling","name":"臥室插針機#3","identifier":"865-FA01-D954","checkItems":[{"name":"自動送料速度","value":600.0,"positiveError":100.0,"negativeError":100.0,"unit":"rpm","checkMethod":"CHECK人機介面參數設定3","frequency":"day","editor":"fit1041","manager":"fit1014","resultType":"numerical","enable":true}]},{"workStation":"廠區","stage":"plating","name":"消防栓#3","identifier":"866-GA01-D002","checkItems":[{"name":"是否放至正確位置","value":null,"positiveError":null,"negativeError":null,"unit":null,"checkMethod":"人員觀察","frequency":"day","editor":"fit1014","manager":"fit1041","resultType":"text","enable":true}]}]};
                         this.toast('讀取總覽', `讀取失敗: ${response.stage}(${response.stageText})`);
                         return {code: 400};                        
                     }
                     else
                     {
-                        return {"success":true,"msg":"success","data":[{"stage":"成型","identifier":"030-0026-1631","description":"(成)3.2Plug","name":"16"},{"stage":"成型","identifier":"030-0002-1410","description":"(成)RF020 shell","name":"19"},{"stage":"成型","identifier":"009-0026-6068","description":"(成)3.2Rec","name":"29"},{"stage":"成型","identifier":"030-0001-1409","description":"(成)RF020 fixed","name":"B10"},{"stage":"沖壓","identifier":"025-1009-4926","description":"(沖)3.2Rec 卡鎖","name":"B09"},{"stage":"沖壓","identifier":"052-0009-6490","description":"(沖)3.2Plug","name":"B09"},{"stage":"沖壓","identifier":"025-0009-5065","description":"(沖)RF020 shell","name":"H01"},{"stage":"沖壓","identifier":"052-0009-5953","description":"(沖)RF020 moving","name":"H01"},{"stage":"裝配","identifier":"QT4013Y-D0332-7H","description":"HD BTB 3.2(PLUG)","name":"3.2PLUG #1"},{"stage":"裝配","identifier":"QT4113Y-D0332-7H","description":"HD BTB 3.2(REC)","name":"3.2REC #1"},{"stage":"裝配","identifier":"KMC1001-F020-7H","description":"RF 020-12mm","name":"RF020#2"},{"stage":"裝配","identifier":"KMC1001-F020-7H","description":"RF 020-12mm","name":"RF020#3"},{"stage":"電鍍","identifier":"052-000Y-6490","description":"(電)3.2 PLUG","name":"睿品"}]};
-                        return response.json();
+                       return response.json();
                     }
                 })
                 
@@ -1081,7 +1081,7 @@
                     const identifier = item.identifier;
                     const resultType = isNaN(item.value) ? 'text' : 'numerical';
 
-                    fetch(`http://10.57.20.154:8096/checklist-api/equipments/${item.identifier}/check-items/${item.check_name}`,
+                    fetch(`/checklist-api/equipments/${item.identifier}/check-items/${item.check_name}`,
                         {
                             method: 'PUT',
                             headers: {
